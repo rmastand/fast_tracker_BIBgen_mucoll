@@ -1,0 +1,16 @@
+ModelType: 'MAF'
+Transform: 'Affine'
+optimizer: 'Adam'
+num_cond_inputs: 1
+num_layers: 1
+num_blocks: 6
+num_hidden: 20
+activation_function: 'tanh'
+pre_exp_tanh: false
+batch_norm: true
+batch_norm_momentum: 1
+
+optimizer:
+  name: Adam
+  lr: 0.00001
+  weight_decay: 0.000001
