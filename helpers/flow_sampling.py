@@ -5,10 +5,16 @@ import torch
 import tensorflow as tf
 
 
-def get_flow_samples(model, masses):
+def get_flow_samples(model, masses=None, num_samples=None):
     with torch.no_grad():
-        feats = model.model.sample(num_samples=masses.shape[0], cond_inputs=torch.tensor(masses.reshape(-1,1)).float()).detach().cpu().numpy()
-    return np.hstack([feats, masses.reshape(-1,1)])
+        if masses is not None:
+            feats = model.model.sample(num_samples=masses.shape[0], cond_inputs=torch.tensor(masses.reshape(-1,1)).float()).detach().cpu().numpy()
+            return np.hstack([feats, masses.reshape(-1,1)])
+        else:
+            feats = model.model.sample(num_samples=num_samples).detach().cpu().numpy()
+            return feats
+            
+    
 
 def get_mass_samples(SR_left, SR_right, n_SR_samples, popt, fit_function, log = False):
 

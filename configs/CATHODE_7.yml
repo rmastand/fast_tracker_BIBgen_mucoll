@@ -1,7 +1,7 @@
 ModelType: 'MAF'
 Transform: 'Affine'
 optimizer: 'Adam'
-num_cond_inputs: 1
+num_cond_inputs: 0
 num_layers: 1
 num_blocks: 15
 num_hidden: 128

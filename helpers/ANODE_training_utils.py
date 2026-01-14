@@ -8,8 +8,7 @@ from tqdm import tqdm
 import helpers.flows as fnn
 from helpers.utils import EarlyStopping, LRScheduler
 
-def train_ANODE(model, optimizer, dataloader_train, dataloader_test, model_file_name, epochs, patience,
-                savedir="ANODE_models/", device=torch.device('cpu'), verbose=True,
+def train_ANODE(model, optimizer, dataloader_train, dataloader_test, model_file_name, epochs, patience, num_cond_inputs, savedir="ANODE_models/", device=torch.device('cpu'), verbose=True,
                 no_logit=False, data_std=None, reduce_LR=False, reduce_LR_patience=10):
     # ANODE model training function. Records training and valdiation losses and saves the
     #   parameters to file. Works for either inner or outer model.
@@ -29,9 +28,9 @@ def train_ANODE(model, optimizer, dataloader_train, dataloader_test, model_file_
         assert (data_std is not None), (
             "Need data_std to correct losses when trained without logit")
 
-    train_loss_return = compute_loss_over_batches(model, dataloader_train, device,
+    train_loss_return = compute_loss_over_batches(model, dataloader_train, device, num_cond_inputs,
                                                  correct_logit=data_std if no_logit else None)
-    val_loss_return = compute_loss_over_batches(model, dataloader_test, device,
+    val_loss_return = compute_loss_over_batches(model, dataloader_test, device, num_cond_inputs,
                                                 correct_logit=data_std if no_logit else None)
     train_loss = train_loss_return[0]
     val_loss = val_loss_return[0]
@@ -50,10 +49,9 @@ def train_ANODE(model, optimizer, dataloader_train, dataloader_test, model_file_
     # Actually train model
     for epoch in range(epochs):
         print('\nEpoch: {}'.format(epoch))
-        train_loss_return = train_epoch(model, optimizer, dataloader_train, device, verbose=verbose,
-                                        data_std=data_std if no_logit else None,)
+        train_loss_return = train_epoch(model, optimizer, dataloader_train, device, num_cond_inputs, verbose=verbose, data_std=data_std if no_logit else None,)
      
-        val_loss_return = compute_loss_over_batches(model, dataloader_test, device,
+        val_loss_return = compute_loss_over_batches(model, dataloader_test, device, num_cond_inputs,
                                                     correct_logit=data_std if no_logit else None)
         train_loss = train_loss_return[0]
         val_loss = val_loss_return[0]
@@ -81,7 +79,7 @@ def train_ANODE(model, optimizer, dataloader_train, dataloader_test, model_file_
 
 
 
-def train_epoch(model, optimizer, data_loader, device, verbose=True, data_std=None):
+def train_epoch(model, optimizer, data_loader, device, num_cond_inputs, verbose=True, data_std=None):
     # Does one epoch of ANODE model training.
 
     model.train()
@@ -94,11 +92,15 @@ def train_epoch(model, optimizer, data_loader, device, verbose=True, data_std=No
     for batch_idx, all_data in enumerate(data_loader):
         
         all_data = all_data.to(device)
+
+        if num_cond_inputs == 1:
+            data = all_data[:,:-1].float()
+            cond_data = torch.reshape(all_data[:,-1], (-1, 1)).float()
+
+        elif num_cond_inputs == 0:
+            data = all_data.float()
+            cond_data = None
    
-        data = all_data[:,:-1].float()
-        cond_data = torch.reshape(all_data[:,-1], (-1, 1)).float()
-   
-        
        
         optimizer.zero_grad()
         loss = -model.log_probs(data, cond_data)
@@ -136,8 +138,11 @@ def train_epoch(model, optimizer, data_loader, device, verbose=True, data_std=No
             
             loc_data = torch.tensor(data_loader.dataset, device = data.device).float()
             ## NOTE this is not yet fully understood but it crucial to work with BN
-            
-            model(loc_data[:,:-1],torch.reshape(loc_data[:,-1], (-1, 1)))
+
+            if num_cond_inputs == 1:
+                model(loc_data[:,:-1],torch.reshape(loc_data[:,-1], (-1, 1)))
+            elif num_cond_inputs == 0:
+                model(loc_data,None)
             
 
         for module in model.modules():
@@ -150,7 +155,7 @@ def train_epoch(model, optimizer, data_loader, device, verbose=True, data_std=No
         return (np.array(train_loss_avg).flatten().mean(), )
 
 
-def compute_loss_over_batches(model, data_loader, device, correct_logit=None):
+def compute_loss_over_batches(model, data_loader, device, num_cond_inputs, correct_logit=None):
     # for computing the averaged loss over the entire dataset.
     # Mainly useful for tracking losses during training
     model.eval()
@@ -166,8 +171,14 @@ def compute_loss_over_batches(model, data_loader, device, correct_logit=None):
             
             all_data = all_data.to(device)
             
-            data = all_data[:,:-1].float()
-            cond_data = torch.reshape(all_data[:,-1], (-1, 1)).float()
+            if num_cond_inputs == 1:
+                data = all_data[:,:-1].float()
+                cond_data = torch.reshape(all_data[:,-1], (-1, 1)).float()
+
+            elif num_cond_inputs == 0:
+                data = all_data.float()
+                cond_data = None
+   
       
 
             loss_vals_raw = model.log_probs(data, cond_data)

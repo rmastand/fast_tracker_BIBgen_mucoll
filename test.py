@@ -85,12 +85,13 @@ for collection in collections_SimTrackerHit: # TODO coned too?
     tmp = np.load(f"/pscratch/sd/r/rmastand/muon/npys/{collection}_SimTrackerHit.npy")
     data.append(tmp)
 
-data = np.vstack(data)
+data = np.vstack(data)[:,[0,2,3,4,5]]
+num_cond_inputs = 0
 
 # preprocessing from CATHODE paper
 X = preprocess_data(data)
 # add a random noise feature for now
-X = np.hstack([X,  np.random.normal(size=(len(X),1))])
+#X = np.hstack([X,  np.random.normal(size=(len(X),1))])
 
 if True:
     # train val split
@@ -116,7 +117,7 @@ if True:
     
  
     train_ANODE(model, optimizer, train_loader, val_loader, f"flow",
-                EPOCHS, PATIENCE, savedir=flow_training_dir, device=device, verbose=True, no_logit=False, data_std=None)
+                EPOCHS, PATIENCE, savedir=flow_training_dir, device=device, num_cond_inputs=num_cond_inputs, verbose=True, no_logit=False, data_std=None)
 
 
 
