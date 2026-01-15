@@ -1,0 +1,11 @@
+channels: [16, 16, 16]
+embed_dim: 64
+sigma: 25
+
+optimizer:
+  name: Adam
+  lr: 0.001
+  weight_decay: 0.000001
+
+
+# 10_896 trainable params

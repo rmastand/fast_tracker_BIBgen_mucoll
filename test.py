@@ -11,13 +11,16 @@ from numba import cuda
 from helpers.density_estimator import DensityEstimator
 from helpers.ANODE_training_utils import train_ANODE, plot_ANODE_losses
 from helpers.data_transforms import preprocess_data 
+#from helpers.flow_sampling import get_flow_samples
 
-from helpers.flow_sampling import get_flow_samples
+from helpers.models.diffusion.diffusion_model import ScoreNet1D, marginal_prob_std, loss_fn
+import functools
 
 
 SEED = 8
 BATCH_SIZE = 1024
 NUM_FEATURES = 5
+NUM_COND_INPUTS = 0
 EPOCHS = 1000
 PATIENCE = 50
 
@@ -34,6 +37,8 @@ np.random.seed(seed)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-c", "--config", type=str)
+parser.add_argument("-flow", "--train_flow_model", action="store_true")
+parser.add_argument("-diff", "--train_diffusion_model", action="store_true")
 args = parser.parse_args()
 
 
@@ -86,41 +91,107 @@ for collection in collections_SimTrackerHit: # TODO coned too?
     data.append(tmp)
 
 data = np.vstack(data)[:,[0,2,3,4,5]]
-num_cond_inputs = 0
+
 
 # preprocessing from CATHODE paper
 X = preprocess_data(data)
 # add a random noise feature for now
 #X = np.hstack([X,  np.random.normal(size=(len(X),1))])
 
-if True:
-    # train val split
-    from sklearn.model_selection import train_test_split
-    
-    data_train, data_val = train_test_split(X, test_size=0.2, random_state=42)
-    
-    print(f"Train data has shape {data_train.shape}.")
-    print(f"Val data has shape {data_val.shape}.")
 
+# train val split
+from sklearn.model_selection import train_test_split
+
+data_train, data_val = train_test_split(X, test_size=0.2, random_state=42)
+
+print(f"Train data has shape {data_train.shape}.")
+print(f"Val data has shape {data_val.shape}.")
+
+
+train_loader = torch.utils.data.DataLoader(data_train, batch_size=BATCH_SIZE, shuffle=True, num_workers = 8, pin_memory = True)
+val_loader = torch.utils.data.DataLoader(data_val, batch_size=BATCH_SIZE, shuffle=False, num_workers = 8, pin_memory = True)
     
-    train_loader = torch.utils.data.DataLoader(data_train, batch_size=BATCH_SIZE, shuffle=True, num_workers = 8, pin_memory = True)
-    val_loader = torch.utils.data.DataLoader(data_val, batch_size=BATCH_SIZE, shuffle=False, num_workers = 8, pin_memory = True)
-        
-    
-    """
-    CREATE THE FLOW
-    """
-    
+
+if args.train_flow_model:
     anode = DensityEstimator(path_to_config_file, NUM_FEATURES, device=device,
                              verbose=False, bound=False)
     model, optimizer = anode.model, anode.optimizer
     
- 
+    
     train_ANODE(model, optimizer, train_loader, val_loader, f"flow",
-                EPOCHS, PATIENCE, savedir=flow_training_dir, device=device, num_cond_inputs=num_cond_inputs, verbose=True, no_logit=False, data_std=None)
+                EPOCHS, PATIENCE, savedir=flow_training_dir, device=device, num_cond_inputs=NUM_COND_INPUTS, verbose=True, no_logit=False, data_std=None)
+    
+elif args.train_diffusion_model: # TODO PATIENCE
+
+    with open(path_to_config_file, "r") as ifile:
+        configs_dict = yaml.safe_load(ifile)
 
 
+    from torch.optim import Adam
+    import tqdm.notebook as notebook
+    
 
+    marginal_prob_std_fn = functools.partial(marginal_prob_std, sigma=configs_dict["sigma"], device=device)
+
+    score_model = torch.nn.DataParallel(ScoreNet1D(marginal_prob_std=marginal_prob_std_fn, channels=configs_dict["channels"], embed_dim=configs_dict["embed_dim"]))
+    score_model = score_model.to(device)
+    
+    def count_parameters(model):
+        return sum(p.numel() for p in model.parameters() if p.requires_grad)
+    
+    # Assuming you have your model defined as 'model'
+    num_params = count_parameters(score_model)
+    print(f"Number of trainable parameters: {num_params}")
+
+    optimizer = Adam(score_model.parameters(), lr=configs_dict["optimizer"]["lr"], weight_decay=configs_dict["optimizer"]["weight_decay"])
+    tqdm_epoch = notebook.trange(EPOCHS)
+    
+
+    train_losses, val_losses = [], []
+    best_val_loss = 1e10
+    for epoch in tqdm_epoch:
+        
+        avg_train_loss, avg_val_loss = 0.0, 0.0
+        num_items = 0
+
+        # train
+        for x in train_loader:
+            x = x.to(device).float()  
+            loss = loss_fn(score_model, x, marginal_prob_std_fn)
+            optimizer.zero_grad()
+            loss.backward()    
+            optimizer.step()
+            avg_train_loss += loss.item() * x.shape[0]
+            num_items += x.shape[0]
+            
+        # Print the averaged training loss so far.
+        tqdm_epoch.set_description('Average Loss: {:5f}'.format(avg_train_loss / num_items))
+        train_losses.append(avg_train_loss / num_items)
+
+
+        # val
+        with torch.no_grad():
+            for x in val_loader:
+                x = x.to(device).float()   
+                loss = loss_fn(score_model, x, marginal_prob_std_fn)
+                avg_val_loss += loss.item() * x.shape[0]
+
+            val_losses.append(avg_val_loss / num_items)
+
+        if val_losses[-1] < best_val_loss:
+            print("new best val loss", best_val_loss )
+            best_val_loss = val_losses[-1]
+            
+            # Update the checkpoint after each epoch of training.
+            torch.save(score_model.state_dict(), f"{flow_training_dir}/ckpt.pth")
+
+        np.save(f"{flow_training_dir}/flow_train_losses.npy", train_losses)
+        np.save(f"{flow_training_dir}/flow_val_losses.npy", val_losses)
+
+
+    
+
+      
 
 
 
