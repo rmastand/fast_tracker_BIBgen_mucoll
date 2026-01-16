@@ -1,3 +1,10 @@
-*.pyc
-*/_pycache__/* 
-*/.ipynb_checkpoints/*
+# Python bytecode
+**/__pycache__/
+**/*.pyc
+
+# Jupyter notebook checkpoints
+**/.ipynb_checkpoints/
+
+# Editor / OS junk
+*~
+
