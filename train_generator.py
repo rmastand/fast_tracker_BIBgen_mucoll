@@ -94,7 +94,7 @@ data = np.vstack(data)[:,[0,2,3,4,5]]
 
 
 # preprocessing from CATHODE paper
-X = preprocess_data(data)
+X = preprocess_data(data, flow_training_dir)
 # add a random noise feature for now
 #X = np.hstack([X,  np.random.normal(size=(len(X),1))])
 

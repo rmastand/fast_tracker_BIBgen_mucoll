@@ -40,7 +40,8 @@ def Euler_Maruyama_sampler(
 
     x = init_x
     with torch.no_grad():
-        for time_step in tqdm(time_steps):
+        #for time_step in tqdm(time_steps):
+        for time_step in time_steps:
             batch_time_step = torch.ones(batch_size, device=device) * time_step
             g = diffusion_coeff(batch_time_step)
 
@@ -89,7 +90,8 @@ def pc_sampler(
 
     x = init_x
     with torch.no_grad():
-        for time_step in tqdm(time_steps):
+        #for time_step in tqdm(time_steps):
+        for time_step in time_steps:
             batch_time_step = torch.ones(batch_size, device=device) * time_step
 
             # Corrector step (Langevin MCMC)

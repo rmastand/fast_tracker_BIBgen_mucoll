@@ -19,7 +19,7 @@ def logit_transform(x, all_min, all_max, cushion ):
 
 
 
-def preprocess_data(X):
+def preprocess_data(X, flow_training_dir):
 
     minmax_scaler = MinMaxScaler()
     standard_scaler = StandardScaler()
@@ -29,18 +29,18 @@ def preprocess_data(X):
         X_preproc[:,i] = logit_transform(X_preproc[:,i], 0.0, 1.0, 0.0)
     X_preproc = standard_scaler.fit_transform(X_preproc)
 
-    with open("minmax", "wb") as ofile:
+    with open(f"{flow_training_dir}/minmax", "wb") as ofile:
         pickle.dump(minmax_scaler, ofile)
-    with open("standard", "wb") as ofile:
+    with open(f"{flow_training_dir}/standard", "wb") as ofile:
         pickle.dump(standard_scaler, ofile)
         
     return X_preproc
 
-def inverse_preprocess_data(X_preproc):
+def inverse_preprocess_data(X_preproc, flow_training_dir):
 
-    with open("minmax", "rb") as ifile:
+    with open(f"{flow_training_dir}/minmax", "rb") as ifile:
         minmax_scaler = pickle.load(ifile)
-    with open("standard", "rb") as ifile:
+    with open(f"{flow_training_dir}/standard", "rb") as ifile:
         standard_scaler = pickle.load(ifile)
 
     X = standard_scaler.inverse_transform(X_preproc)
