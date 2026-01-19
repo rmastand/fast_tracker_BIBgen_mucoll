@@ -19,11 +19,8 @@ import functools
 
 SEED = 8
 BATCH_SIZE = 1024
-NUM_FEATURES = 5
-NUM_COND_INPUTS = 0
 EPOCHS = 1000
-PATIENCE = 50
-
+PATIENCE = 50 
 
 # computing
 device = cuda.get_current_device()
@@ -37,13 +34,16 @@ np.random.seed(seed)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-c", "--config", type=str)
+parser.add_argument("-id", "--id", type=str)
 parser.add_argument("-flow", "--train_flow_model", action="store_true")
 parser.add_argument("-diff", "--train_diffusion_model", action="store_true")
+parser.add_argument("-context", "--num_cond_inputs", type=int, default=0)
+
 args = parser.parse_args()
 
 
 path_to_config_file = f"configs/{args.config}.yml"
-flow_training_dir = f"/pscratch/sd/r/rmastand/muon/models/{args.config}"
+flow_training_dir = f"/pscratch/sd/r/rmastand/muon/models/{args.config}/{args.id}"
 os.makedirs(flow_training_dir, exist_ok=True)
 
 
@@ -64,17 +64,17 @@ collections_TrackerHitPlane = [
 ]
 
 collections_SimTrackerHit = [
-   # "InnerTrackerBarrelCollection",
+    "InnerTrackerBarrelCollection",
    # "InnerTrackerBarrelCollectionConed",
-   # "InnerTrackerEndcapCollection",
+    "InnerTrackerEndcapCollection",
     #"InnerTrackerEndcapCollectionConed", 
     "OuterTrackerBarrelCollection",     
    # "OuterTrackerBarrelCollectionConed",
-  #  "OuterTrackerEndcapCollection",  
+    "OuterTrackerEndcapCollection",  
    # "OuterTrackerEndcapCollectionConed",
-   # "VertexBarrelCollection",   
+    "VertexBarrelCollection",   
    # "VertexBarrelCollectionConed",   
-   # "VertexEndcapCollection",
+    "VertexEndcapCollection",
    # "VertexEndcapCollectionConed",
 ]
 
@@ -84,20 +84,39 @@ def logit_scale(x):
 
 
 data = []
+context = []
 
-for collection in collections_SimTrackerHit: # TODO coned too?
-    
-    tmp = np.load(f"/pscratch/sd/r/rmastand/muon/npys/{collection}_SimTrackerHit.npy")
-    data.append(tmp)
+for i, collection in enumerate(collections_SimTrackerHit): # TODO coned too?
+
+    tmp_data = np.load(f"/pscratch/sd/r/rmastand/muon/npys/{collection}_SimTrackerHit.npy")
+    tmp_context = int(i)*np.ones((tmp_data.shape[0],1))
+    context.append(tmp_context)
+    data.append(tmp_data)
+
+
 
 data = np.vstack(data)[:,[0,2,3,4,5]]
+context = np.vstack(context)
 
 
 # preprocessing from CATHODE paper
 X = preprocess_data(data, flow_training_dir)
-# add a random noise feature for now
-#X = np.hstack([X,  np.random.normal(size=(len(X),1))])
 
+if args.num_cond_inputs == 1:
+    # add a random noise feature for now
+    X = np.hstack([X,  context])
+elif args.num_cond_inputs == 0:
+    pass
+else:
+    print("ERROR")
+    exit()
+
+NUM_COND_INPUTS = args.num_cond_inputs
+NUM_FEATURES =  X.shape[1] - NUM_COND_INPUTS
+
+print(f"num features: {NUM_FEATURES}. num context: {NUM_COND_INPUTS}")
+
+print(X.shape)
 
 # train val split
 from sklearn.model_selection import train_test_split
