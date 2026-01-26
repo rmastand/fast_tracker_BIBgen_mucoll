@@ -134,16 +134,17 @@ def train_epoch(model, optimizer, data_loader, device, num_cond_inputs, verbose=
             module.momentum = 0
 
     if has_batch_norm:
-        with torch.no_grad():
-            
-            loc_data = torch.tensor(data_loader.dataset, device = data.device).float()
-            ## NOTE this is not yet fully understood but it crucial to work with BN
 
-            if num_cond_inputs == 1:
-                model(loc_data[:,:-1],torch.reshape(loc_data[:,-1], (-1, 1)))
-            elif num_cond_inputs == 0:
-                model(loc_data,None)
-            
+        model.train()  # BN must be in train mode
+        
+        with torch.no_grad():
+            for batch in data_loader:
+                batch = batch.to(data.device)
+        
+                if num_cond_inputs == 1:
+                    model(batch[:, :-1], batch[:, -1].reshape(-1, 1))
+                else:
+                    model(batch, None)
 
         for module in model.modules():
             if isinstance(module, fnn.BatchNormFlow):
