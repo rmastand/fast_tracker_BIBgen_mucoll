@@ -139,7 +139,7 @@ def train_epoch(model, optimizer, data_loader, device, num_cond_inputs, verbose=
         
         with torch.no_grad():
             for batch in data_loader:
-                batch = batch.to(data.device)
+                batch = batch.to(data.device).float()
         
                 if num_cond_inputs == 1:
                     model(batch[:, :-1], batch[:, -1].reshape(-1, 1))

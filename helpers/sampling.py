@@ -1,8 +1,6 @@
-import zfit
-from zfit import z
 import numpy as np
 import torch
-import tensorflow as tf
+from tqdm import tqdm
 
 
 def get_flow_samples(model, masses=None, num_samples=None):
@@ -17,6 +15,10 @@ def get_flow_samples(model, masses=None, num_samples=None):
     
 
 def get_mass_samples(SR_left, SR_right, n_SR_samples, popt, fit_function, log = False):
+
+    import zfit
+    from zfit import z
+    import tensorflow as tf
 
     # necessary to convert between torch and numpy
     tf.config.run_functions_eagerly(True)
@@ -38,4 +40,24 @@ def get_mass_samples(SR_left, SR_right, n_SR_samples, popt, fit_function, log = 
     
     return custom_pdf.sample(n=n_SR_samples)["mass_inv"].numpy()
     
+
+
+def get_cfm_samples(node, N_FEATURES, N_SAMPLE, BATCH_SIZE, device):
+    with torch.no_grad():
+        samples = []
+        for i in tqdm(range(0, N_SAMPLE, BATCH_SIZE)):
+            if i + BATCH_SIZE > N_SAMPLE:
+                nn = N_SAMPLE - i 
+            else:
+                nn = BATCH_SIZE
+
+            loc_samples = node.trajectory(
+                    torch.normal(size=(nn, N_FEATURES), mean=0.0, std=1.0).to(device),
+                    t_span=torch.linspace(0, 1, 100).to(device),
+                ).detach()[-1].cpu().numpy()
+
+            samples.append(loc_samples)
+        samples = np.concatenate(samples)    
+
+    return samples
     

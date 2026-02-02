@@ -14,9 +14,10 @@ from helpers.utils import EarlyStopping
 
 from sklearn.preprocessing import StandardScaler
 
-
-def np_to_torch(array, device):
+def count_parameters(model):
+        return sum(p.numel() for p in model.parameters() if p.requires_grad)
     
+def np_to_torch(array, device):
     return torch.tensor(array.astype(np.float32)).to(device)
     
 """
@@ -24,13 +25,13 @@ NEURAL NET
 """
 
 class NeuralNet(nn.Module):
-    def __init__(self, layers, n_inputs):
+    def __init__(self, layers, n_inputs, activation=torch.nn.ReLU()):
         super(NeuralNet, self).__init__()
 
         self.layers = []
         for nodes in layers:
             self.layers.append(nn.Linear(n_inputs, nodes))
-            self.layers.append(nn.ReLU())
+            self.layers.append(activation)
             n_inputs = nodes
         self.layers.append(nn.Linear(n_inputs, 1))
         #self.layers.append(nn.Sigmoid())

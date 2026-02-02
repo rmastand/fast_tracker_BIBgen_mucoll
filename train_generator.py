@@ -78,9 +78,6 @@ collections_SimTrackerHit = [
    # "VertexEndcapCollectionConed",
 ]
 
-def logit_scale(x):
-    return np.log(x / (1.0 - vx + epsilon) + epsilon)
-
 
 
 data = []
@@ -103,12 +100,11 @@ context = np.vstack(context)
 X = preprocess_data(data, flow_training_dir)
 
 if args.num_cond_inputs == 1:
-    # add a random noise feature for now
     X = np.hstack([X,  context])
 elif args.num_cond_inputs == 0:
     pass
 else:
-    print("ERROR")
+    print("ERROR")_
     exit()
 
 NUM_COND_INPUTS = args.num_cond_inputs
@@ -155,8 +151,7 @@ elif args.train_diffusion_model: # TODO PATIENCE
     score_model = torch.nn.DataParallel(ScoreNet1D(marginal_prob_std=marginal_prob_std_fn, channels=configs_dict["channels"], embed_dim=configs_dict["embed_dim"]))
     score_model = score_model.to(device)
     
-    def count_parameters(model):
-        return sum(p.numel() for p in model.parameters() if p.requires_grad)
+    
     
     # Assuming you have your model defined as 'model'
     num_params = count_parameters(score_model)
