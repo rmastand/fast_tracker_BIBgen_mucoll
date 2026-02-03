@@ -4,7 +4,7 @@ from matplotlib.colors import LogNorm
 
 
 
-def plot_hists_1d(data_dict, bins_dict):
+def plot_hists_1d(data_dict, bins_dict, log_dims=[0]):
     N_FEATURES = len(bins_dict.keys())
     fig, ax = plt.subplots(1, N_FEATURES, figsize=(N_FEATURES*5, N_FEATURES))
     for i in range(N_FEATURES):
@@ -12,6 +12,8 @@ def plot_hists_1d(data_dict, bins_dict):
             ax[i].hist(data_dict[key][:,i], bins=bins_dict[i], density=True, histtype = "step", label = key)
         ax[i].set_title(f"Feature {i}")
         ax[i].set_yscale("log")
+        if i in log_dims:
+            ax[i].set_xscale("log")
     ax[-1].legend()
     return fig, ax
 

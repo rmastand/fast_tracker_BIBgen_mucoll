@@ -64,17 +64,17 @@ collections_TrackerHitPlane = [
 ]
 
 collections_SimTrackerHit = [
-    "InnerTrackerBarrelCollection",
+ #   "InnerTrackerBarrelCollection",
    # "InnerTrackerBarrelCollectionConed",
-    "InnerTrackerEndcapCollection",
+ #   "InnerTrackerEndcapCollection",
     #"InnerTrackerEndcapCollectionConed", 
     "OuterTrackerBarrelCollection",     
    # "OuterTrackerBarrelCollectionConed",
-    "OuterTrackerEndcapCollection",  
+ #   "OuterTrackerEndcapCollection",  
    # "OuterTrackerEndcapCollectionConed",
-    "VertexBarrelCollection",   
+  #  "VertexBarrelCollection",   
    # "VertexBarrelCollectionConed",   
-    "VertexEndcapCollection",
+ #   "VertexEndcapCollection",
    # "VertexEndcapCollectionConed",
 ]
 
@@ -93,6 +93,7 @@ for i, collection in enumerate(collections_SimTrackerHit): # TODO coned too?
 
 
 data = np.vstack(data)[:,[0,2,3,4,5]]
+data = data[data[:,0] > 2e-6]
 context = np.vstack(context)
 
 
@@ -104,7 +105,7 @@ if args.num_cond_inputs == 1:
 elif args.num_cond_inputs == 0:
     pass
 else:
-    print("ERROR")_
+    print("ERROR")
     exit()
 
 NUM_COND_INPUTS = args.num_cond_inputs

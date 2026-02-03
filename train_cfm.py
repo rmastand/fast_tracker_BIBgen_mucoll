@@ -255,13 +255,13 @@ def run_cfm_model(MLP_base_model, FM, name, model_id, train_model, path_to_train
                 epoch_losses_val.append(loss.item())
                 pbar.set_postfix(loss=f"{loss.item():.3e}, epoch {k}")
         
-                losses_val.append(np.mean(epoch_losses_val))
-    
-                if losses_val[-1] < best_val_loss:
-                    best_val_loss = losses_val[-1]
-                    print("new best val loss", losses_val[-1])
-                    
-                    torch.save(model.state_dict(), f"{savedir}/{name}.pt")
+            losses_val.append(np.mean(epoch_losses_val))
+
+            if losses_val[-1] < best_val_loss:
+                best_val_loss = losses_val[-1]
+                #print("new best val loss", losses_val[-1])
+                
+                torch.save(model.state_dict(), f"{savedir}/{name}.pt")
     
             if (k + 1) % PLOT_EPOCH_INTERVAL == 0:
                
@@ -274,19 +274,24 @@ def run_cfm_model(MLP_base_model, FM, name, model_id, train_model, path_to_train
                 plt.savefig(f"plots/{name}_losses")
     
                 if model_id == "cfm":
-                    node = NeuralODE(
-                        torch_wrapper(model),
-                        solver="dopri5", 
-                        sensitivity="adjoint", 
-                        atol=1e-4, 
-                        rtol=1e-4
-                            )
-                    samples = get_cfm_samples(node, N_FEATURES, N_SAMPLE, BATCH_SIZE, device=device)
+
+                    model_cpu = copy.deepcopy(model).to("cpu")  # make sure parameters are on CPU
+
+                    with torch.no_grad():
+                        node = NeuralODE(
+                            torch_wrapper(model_cpu),
+                            solver="dopri5", 
+                            sensitivity="adjoint", 
+                            atol=1e-4, 
+                            rtol=1e-4
+                                )
+    
+                        samples = get_cfm_samples(node, N_FEATURES, N_SAMPLE, BATCH_SIZE, device="cpu")
                     
                 elif model_id == "action":
                     action_cpu = copy.deepcopy(action).to("cpu")  # make sure parameters are on CPU
                     model_cpu = GradModel(action_cpu)
-                    node = NeuralODE(
+                    node_cpu = NeuralODE(
                         torch_wrapper(model_cpu),
                         solver="euler",
                         sensitivity="adjoint",  
@@ -294,12 +299,12 @@ def run_cfm_model(MLP_base_model, FM, name, model_id, train_model, path_to_train
                         rtol=1e-4
                     )
 
-                    samples = get_cfm_samples(node, N_FEATURES, N_SAMPLE, BATCH_SIZE, device="cpu")
+                    samples = get_cfm_samples(node_cpu, N_FEATURES, N_SAMPLE, BATCH_SIZE, device="cpu")
                 
     
                 loc_data_dict = {"data": inverse_preprocess_data( data_val , "."),
                         "generated": inverse_preprocess_data( samples , ".")}
-                plot_hists_1d(loc_data_dict, bins_dict)
+                plot_hists_1d(loc_data_dict, bins_dict, log_dims=log_vars)
                 plt.savefig(f"plots/{name}_hists")
     
                 for key in loc_data_dict.keys():
@@ -320,18 +325,24 @@ def run_cfm_model(MLP_base_model, FM, name, model_id, train_model, path_to_train
         if model_id == "cfm":
             model.load_state_dict(torch.load(path_to_trained_model, weights_only=True))
             model.eval()
+            model_cpu = copy.deepcopy(model).to("cpu")  # make sure parameters are on CPU
+
+            with torch.no_grad():
             
-            node = NeuralODE(
-                torch_wrapper(model),
-                solver="dopri5", 
-                sensitivity="adjoint", 
-                atol=1e-4, 
-                rtol=1e-4
-                    )
+                node = NeuralODE(
+                    torch_wrapper(model_cpu),
+                    solver="dopri5", 
+                    sensitivity="adjoint", 
+                    atol=1e-4, 
+                    rtol=1e-4
+                        )
+                samples = get_cfm_samples(node, N_FEATURES, data_val.shape[0], BATCH_SIZE, device="cpu")
             
         elif model_id == "action":
-            action.load_state_dict(torch.load(path_to_trained_model, weights_only=True))
-            action.eval()
+            
+    
+            model.load_state_dict(torch.load(path_to_trained_model, weights_only=True))
+            model.eval()
             action_cpu = copy.deepcopy(action).to("cpu")  # make sure parameters are on CPU
             model_cpu = GradModel(action_cpu)
             node_cpu = NeuralODE(
@@ -341,12 +352,14 @@ def run_cfm_model(MLP_base_model, FM, name, model_id, train_model, path_to_train
                 atol=1e-4,
                 rtol=1e-4
             )
-            
-        samples = get_cfm_samples(node, N_FEATURES, 10*N_SAMPLE, BATCH_SIZE, device=device)
 
-        loc_data_dict = {"data": inverse_preprocess_data( data , "."),
+            samples = get_cfm_samples(node_cpu, N_FEATURES, data_val.shape[0], BATCH_SIZE, device="cpu")
+            
+        
+
+        loc_data_dict = {"data": inverse_preprocess_data( data_val , "."),
                 "generated": inverse_preprocess_data( samples , ".")}
-        plot_hists_1d(loc_data_dict, bins_dict)
+        plot_hists_1d(loc_data_dict, bins_dict, log_dims=log_vars)
         plt.savefig(f"plots/{name}_hists_final")
 
         for key in loc_data_dict.keys():
@@ -364,22 +377,22 @@ def run_cfm_model(MLP_base_model, FM, name, model_id, train_model, path_to_train
 # %%
 flow_model_dicts = {
     "ConditionalFlowMatcher": {
-        "model": NeuralNet([256, 256, 1], N_FEATURES+1, activation=torch.nn.SELU()),
+        "model": NeuralNet([512, 512, 512, 1], N_FEATURES+1, activation=torch.nn.SELU()),
         "FM": ConditionalFlowMatcher(sigma=0.1),
         "name": "CFM_sigma01"
    },
     "ExactOptimalTransportConditionalFlowMatcher": {
-        "model":  NeuralNet([256, 256, 1], N_FEATURES+1, activation=torch.nn.SELU()),
+        "model":  NeuralNet([512, 512, 512, 1], N_FEATURES+1, activation=torch.nn.SELU()),
         "FM": ExactOptimalTransportConditionalFlowMatcher(sigma=0.1),
         "name": "EOTCFM_sigma01"
   },
     "SchrodingerBridgeConditionalFlowMatcher":{
-        "model":  NeuralNet([256, 256, 1], N_FEATURES+1, activation=torch.nn.SELU()),
+        "model":  NeuralNet([512, 512, 512, 1], N_FEATURES+1, activation=torch.nn.SELU()),
         "FM": SchrodingerBridgeConditionalFlowMatcher(sigma=0.5, ot_method="exact"),
         "name": "SBCFM_sigma05_exact"
     },
     "VariancePreservingConditionalFlowMatcher":{
-       "model": NeuralNet([256, 256, 1], N_FEATURES+1, activation=torch.nn.SELU()),
+       "model": NeuralNet([512, 512, 512, 1], N_FEATURES+1, activation=torch.nn.SELU()),
           "FM": VariancePreservingConditionalFlowMatcher(sigma=0.1),
         "name": "VPCFM_sigma01"
     }
@@ -388,7 +401,7 @@ flow_model_dicts = {
 
 flow_model_action_dicts= {
     "MLP": {
-        "action":   NeuralNet([256, 256, 1], N_FEATURES+1, activation=torch.nn.SELU()),
+        "action":   NeuralNet([512, 512, 512, 1], N_FEATURES+1, activation=torch.nn.SELU()),
         "name": "action"
     }
 }

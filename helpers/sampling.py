@@ -43,21 +43,21 @@ def get_mass_samples(SR_left, SR_right, n_SR_samples, popt, fit_function, log = 
 
 
 def get_cfm_samples(node, N_FEATURES, N_SAMPLE, BATCH_SIZE, device):
-    with torch.no_grad():
-        samples = []
-        for i in tqdm(range(0, N_SAMPLE, BATCH_SIZE)):
-            if i + BATCH_SIZE > N_SAMPLE:
-                nn = N_SAMPLE - i 
-            else:
-                nn = BATCH_SIZE
+   
+    samples = []
+    for i in tqdm(range(0, N_SAMPLE, BATCH_SIZE)):
+        if i + BATCH_SIZE > N_SAMPLE:
+            nn = N_SAMPLE - i 
+        else:
+            nn = BATCH_SIZE
 
-            loc_samples = node.trajectory(
-                    torch.normal(size=(nn, N_FEATURES), mean=0.0, std=1.0).to(device),
-                    t_span=torch.linspace(0, 1, 100).to(device),
-                ).detach()[-1].cpu().numpy()
+        loc_samples = node.trajectory(
+                torch.normal(size=(nn, N_FEATURES), mean=0.0, std=1.0).to(device),
+                t_span=torch.linspace(0, 1, 100).to(device),
+            ).detach()[-1].cpu().numpy()
 
-            samples.append(loc_samples)
-        samples = np.concatenate(samples)    
+        samples.append(loc_samples)
+    samples = np.concatenate(samples)    
 
     return samples
     
