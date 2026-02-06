@@ -22,7 +22,9 @@ from numba import cuda
 import argparse
 import pickle
 import copy
-
+import json
+from datetime import datetime
+import uuid
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -46,19 +48,44 @@ from torch.utils.data import DataLoader
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-n_epochs", "--N_EPOCHS", type=int, default=10)
-parser.add_argument("-plot", "--PLOT_EPOCH_INTERVAL", type=int, default=1)
 parser.add_argument("-bs", "--BATCH_SIZE", type=int, default=1024)
+
+parser.add_argument("-plot", "--PLOT_EPOCH_INTERVAL", type=int, default=1)
 parser.add_argument("-n_samp", "--N_SAMPLE", type=int, default=50000)
-parser.add_argument("-lr", "--LEARNING_RATE", type=float, default=1e-3)
+
 parser.add_argument("-m", "--MODEL", type=str, default="CFM")
 parser.add_argument("-train", "--TRAIN_MODEL", action="store_true")
 parser.add_argument("-eval", "--EVAL_MODEL", action="store_true")
 parser.add_argument("-p", "--TRAINED_MODEL_PATH", type=str)
+
+parser.add_argument("-d", "--dropout", type=float, default=0)
+parser.add_argument("-l", "--layers", type=str, default="32,32,32")
+parser.add_argument("-a", "--activation", type=str, default="relu")
+parser.add_argument("-s", "--sigma", type=float, default=0.1)
+
+parser.add_argument("-lr", "--LEARNING_RATE", type=float, default=1e-3)
+
+
 args = parser.parse_args()
 
 
-savedir = "models"
-os.makedirs(savedir, exist_ok=True)
+
+today = datetime.today()
+date_str = today.strftime("%Y-%m-%d")
+
+# Generate a short unique ID
+unique_id = str(uuid.uuid4())[:6]  # first 6 chars of a UUID
+
+# Combine into folder name
+save_dir = f"outputs/{date_str}-{unique_id}"
+
+# Create folder
+os.makedirs(save_dir, exist_ok=True)
+print("Created folder:", save_dir)
+
+
+with open(f"{save_dir}/commandline_args.txt", 'w') as f:
+    json.dump(args.__dict__, f, indent=2)
 
 
 # %%
@@ -181,6 +208,8 @@ def run_cfm_model(MLP_base_model, FM, name, model_id, train_model, path_to_train
     model = model.to(device)
     num_params = count_parameters(model)
     print(f"Number of trainable parameters: {num_params}")
+    with open(f"{save_dir}/num_params.txt", "w") as ofile:
+        ofile.write(f"Number of trainable parameters: {num_params}")
 
     if train_model:
         print("Training model")
@@ -261,7 +290,7 @@ def run_cfm_model(MLP_base_model, FM, name, model_id, train_model, path_to_train
                 best_val_loss = losses_val[-1]
                 #print("new best val loss", losses_val[-1])
                 
-                torch.save(model.state_dict(), f"{savedir}/{name}.pt")
+                torch.save(model.state_dict(), f"{save_dir}/{name}.pt")
     
             if (k + 1) % PLOT_EPOCH_INTERVAL == 0:
                
@@ -271,7 +300,7 @@ def run_cfm_model(MLP_base_model, FM, name, model_id, train_model, path_to_train
                 plt.xlabel("Epoch")
                 plt.ylabel("Loss")
                 plt.legend()
-                plt.savefig(f"plots/{name}_losses")
+                plt.savefig(f"{save_dir}/{name}_losses")
     
                 if model_id == "cfm":
 
@@ -280,7 +309,8 @@ def run_cfm_model(MLP_base_model, FM, name, model_id, train_model, path_to_train
                     with torch.no_grad():
                         node = NeuralODE(
                             torch_wrapper(model_cpu),
-                            solver="dopri5", 
+                            #solver="dopri5", 
+                            solver="euler", 
                             sensitivity="adjoint", 
                             atol=1e-4, 
                             rtol=1e-4
@@ -305,7 +335,7 @@ def run_cfm_model(MLP_base_model, FM, name, model_id, train_model, path_to_train
                 loc_data_dict = {"data": inverse_preprocess_data( data_val , "."),
                         "generated": inverse_preprocess_data( samples , ".")}
                 plot_hists_1d(loc_data_dict, bins_dict, log_dims=log_vars)
-                plt.savefig(f"plots/{name}_hists")
+                plt.savefig(f"{save_dir}/{name}_hists")
     
                 for key in loc_data_dict.keys():
                     fig_samp, axes_samp = plot_corner_hist_2d(
@@ -315,7 +345,7 @@ def run_cfm_model(MLP_base_model, FM, name, model_id, train_model, path_to_train
                         log_dims=log_vars,
                         title= key,
                     )
-                    plt.savefig(f"plots/{name}_corner_{key}")
+                    plt.savefig(f"{save_dir}/{name}_corner_{key}")
     
         
 
@@ -331,7 +361,8 @@ def run_cfm_model(MLP_base_model, FM, name, model_id, train_model, path_to_train
             
                 node = NeuralODE(
                     torch_wrapper(model_cpu),
-                    solver="dopri5", 
+                    #solver="dopri5", 
+                    solver="euler", 
                     sensitivity="adjoint", 
                     atol=1e-4, 
                     rtol=1e-4
@@ -360,7 +391,7 @@ def run_cfm_model(MLP_base_model, FM, name, model_id, train_model, path_to_train
         loc_data_dict = {"data": inverse_preprocess_data( data_val , "."),
                 "generated": inverse_preprocess_data( samples , ".")}
         plot_hists_1d(loc_data_dict, bins_dict, log_dims=log_vars)
-        plt.savefig(f"plots/{name}_hists_final")
+        plt.savefig(f"{save_dir}/{name}_hists_final")
 
         for key in loc_data_dict.keys():
             fig_samp, axes_samp = plot_corner_hist_2d(
@@ -370,38 +401,40 @@ def run_cfm_model(MLP_base_model, FM, name, model_id, train_model, path_to_train
                 log_dims=log_vars,
                 title= key,
             )
-            plt.savefig(f"plots/{name}_corner_{key}_final")
+            plt.savefig(f"{save_dir}/{name}_corner_{key}_final")
 
 
 
+layers = [int(x) for x in args.layers.split(",")]
+layers.append(1)
 # %%
 flow_model_dicts = {
     "ConditionalFlowMatcher": {
-        "model": NeuralNet([512, 512, 512, 1], N_FEATURES+1, activation=torch.nn.SELU()),
-        "FM": ConditionalFlowMatcher(sigma=0.1),
-        "name": "CFM_sigma01"
+        "model": NeuralNet(layers, N_FEATURES+1, activation=args.activation, dropout=args.dropout),
+        "FM": ConditionalFlowMatcher(sigma=args.sigma),
+        "name": "CFM"
    },
     "ExactOptimalTransportConditionalFlowMatcher": {
-        "model":  NeuralNet([512, 512, 512, 1], N_FEATURES+1, activation=torch.nn.SELU()),
-        "FM": ExactOptimalTransportConditionalFlowMatcher(sigma=0.1),
-        "name": "EOTCFM_sigma01"
+        "model":  NeuralNet(layers, N_FEATURES+1, activation=args.activation, dropout=args.dropout),
+        "FM": ExactOptimalTransportConditionalFlowMatcher(sigma=args.sigma),
+        "name": "EOTCFM"
   },
     "SchrodingerBridgeConditionalFlowMatcher":{
-        "model":  NeuralNet([512, 512, 512, 1], N_FEATURES+1, activation=torch.nn.SELU()),
-        "FM": SchrodingerBridgeConditionalFlowMatcher(sigma=0.5, ot_method="exact"),
-        "name": "SBCFM_sigma05_exact"
+        "model":  NeuralNet(layers, N_FEATURES+1, activation=args.activation, dropout=args.dropout),
+        "FM": SchrodingerBridgeConditionalFlowMatcher(sigma=args.sigma, ot_method="exact"),
+        "name": "SBCFM_exact"
     },
     "VariancePreservingConditionalFlowMatcher":{
-       "model": NeuralNet([512, 512, 512, 1], N_FEATURES+1, activation=torch.nn.SELU()),
-          "FM": VariancePreservingConditionalFlowMatcher(sigma=0.1),
-        "name": "VPCFM_sigma01"
+       "model": NeuralNet(layers, N_FEATURES+1, activation=args.activation, dropout=args.dropout),
+          "FM": VariancePreservingConditionalFlowMatcher(sigma=args.sigma),
+        "name": "VPCFM"
     }
 }
 
 
 flow_model_action_dicts= {
     "MLP": {
-        "action":   NeuralNet([512, 512, 512, 1], N_FEATURES+1, activation=torch.nn.SELU()),
+        "action":   NeuralNet(layers, N_FEATURES+1, activation=args.activation, dropout=args.dropout),
         "name": "action"
     }
 }

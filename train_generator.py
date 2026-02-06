@@ -100,6 +100,7 @@ context = np.vstack(context)
 # preprocessing from CATHODE paper
 X = preprocess_data(data, flow_training_dir)
 
+"""
 if args.num_cond_inputs == 1:
     X = np.hstack([X,  context])
 elif args.num_cond_inputs == 0:
@@ -107,7 +108,7 @@ elif args.num_cond_inputs == 0:
 else:
     print("ERROR")
     exit()
-
+"""
 NUM_COND_INPUTS = args.num_cond_inputs
 NUM_FEATURES =  X.shape[1] - NUM_COND_INPUTS
 
@@ -129,7 +130,7 @@ val_loader = torch.utils.data.DataLoader(data_val, batch_size=BATCH_SIZE, shuffl
     
 
 if args.train_flow_model:
-    anode = DensityEstimator(path_to_config_file, NUM_FEATURES, device=device,
+    anode = DensityEstimator(path_to_config_file, NUM_FEATURES, NUM_COND_INPUTS, device=device,
                              verbose=False, bound=False)
     model, optimizer = anode.model, anode.optimizer
     

@@ -43,7 +43,7 @@ class DensityEstimator:
                 return object.__new__(subclass)
         raise DensityEstimator.Unknown(f'Unknown model "{name}" requested')
 
-    def __init__(self, filename, num_inputs, eval_mode=False, load_path=None,
+    def __init__(self, filename, num_inputs, num_cond_inputs, eval_mode=False, load_path=None,
                  device=torch.device("cpu"), verbose=False, **kwargs):
         # with open(filename, 'r') as stream:
         #     params = yaml.safe_load(stream)
@@ -51,7 +51,10 @@ class DensityEstimator:
         self.bound = False
         self.num_inputs = num_inputs
 
+        self.params["num_cond_inputs"] = num_cond_inputs
+
         self.build(self.params, eval_mode, load_path, device, verbose)
+        
 
     def build(self, params, eval_mode, load_path, device, verbose):
         """

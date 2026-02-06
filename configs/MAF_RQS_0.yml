@@ -1,10 +1,10 @@
 ModelType: 'MAF'
-Transform: 'Affine'
+Transform: 'RQS'
 optimizer: 'Adam'
-num_cond_inputs: 0
-num_layers: 4
-num_blocks: 8
-num_hidden: 128
+num_layers: 1
+num_blocks: 12
+num_hidden: 256
+num_bins: 16
 activation_function: 'tanh'
 pre_exp_tanh: false
 batch_norm: true
@@ -12,8 +12,8 @@ batch_norm_momentum: 1
 
 optimizer:
   name: Adam
-  lr: 0.001
+  lr: 0.0001 #0.001
   weight_decay: 0.000001
 
 
-# 594_560 trainable params
+# 1_532_796

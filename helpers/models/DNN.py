@@ -25,16 +25,18 @@ NEURAL NET
 """
 
 class NeuralNet(nn.Module):
-    def __init__(self, layers, n_inputs, activation=torch.nn.ReLU()):
+    def __init__(self, layers, n_inputs, activation="relu", dropout=0):
         super(NeuralNet, self).__init__()
 
         self.layers = []
         for nodes in layers:
             self.layers.append(nn.Linear(n_inputs, nodes))
-            self.layers.append(activation)
+            if activation=="relu":
+                self.layers.append(nn.ReLU())
             n_inputs = nodes
         self.layers.append(nn.Linear(n_inputs, 1))
         #self.layers.append(nn.Sigmoid())
+        self.layers.append(nn.Dropout(dropout) )
         self.model_stack = nn.Sequential(*self.layers)
 
         
