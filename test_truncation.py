@@ -307,7 +307,7 @@ for key in X_samples.keys():
 
 # %%
 
-
+# https://github.com/key4hep/k4geo/blob/main/MuColl/MAIA/compact/MAIA_v0/OuterTracker_o2_v06_01.xml
 
 
 def get_x_y_mask(X, layer_radii=(819, 1153, 1486), thickness=15):
