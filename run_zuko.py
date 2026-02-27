@@ -23,6 +23,7 @@ import torch
 import argparse
 import yaml
 from numba import cuda
+import wandb
 import zuko
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from helpers.models.DNN import count_parameters
@@ -43,20 +44,35 @@ NUM_FEATURES = 5
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--ZUKO_ID", type=str, default="NSF", help="Zuko model ID")
+parser.add_argument("--NAME", type=str, default="", help="Zuko model ID")
+
 parser.add_argument("--SEED", type=int, default=8, help="Random seed")
 parser.add_argument("--NUM_EPOCHS", type=int, default=5, help="Number of training epochs")
 parser.add_argument("--LEARNING_RATE", type=float, default=1e-3, help="Learning rate")
 parser.add_argument("--BATCH_SIZE", type=int, default=512, help="Batch size")
 parser.add_argument("--NUM_COND_INPUTS", type=int, default=0, help="Number of conditional inputs")
-parser.add_argument("--PLOT_EPOCH_INTERVAL", type=int, default=5, help="Interval for plotting during training")
+parser.add_argument("--TRANSFORMS", type=int, default=3, help="Number of transforms ")
+parser.add_argument("--HIDDEN_FEATURES", type=str, default="32,32,32", help="Number of hidden features")
+parser.add_argument("--FREQS", type=int, default=3, help="Number of hidden features")
+
+parser.add_argument("--PLOT_EPOCH_INTERVAL", type=int, default=10, help="Interval for plotting during training")
 parser.add_argument("--TRAIN_FLOW", action="store_true", help="Whether to train the flow or just load a pre-trained model   ")
 parser.add_argument("--EVAL_FLOW", action="store_true", help="Whether to evaluate the flow after training")
+parser.add_argument("--NUM_BDTS", type=int, default=5, help="Number of transforms ")
+
 args = parser.parse_args()
 
 
 # %%
-save_dir = f"outputs/{args.ZUKO_ID}"
+save_dir = f"/pscratch/sd/r/rmastand/muon/zuko_outputs/{args.ZUKO_ID}/{args.NAME}"
 os.makedirs(save_dir, exist_ok=True)
+wandb.init(
+    project="zuko-flows",          # change if you want
+    name=f"{args.ZUKO_ID}_{args.NAME}",
+    config=vars(args),             # logs all argparse params
+    dir=save_dir
+)
+
 
 # %%
 
@@ -219,28 +235,30 @@ import zuko
 
 # Neural spline flow (NSF) with 3 sample features and 5 context features
 
+hidden_features = [int(x) for x in args.HIDDEN_FEATURES.split(",")]
+
 if args.ZUKO_ID == "NSF":
-    flow = zuko.flows.NSF(5, 0, transforms=3, hidden_features=[128] * 3).to(device)
+    flow = zuko.flows.NSF(5, 0, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
 #elif args.ZUKO_ID == "GMM":
 #    flow = zuko.flows.GMM(5, 0, components=30, hidden_features=[256] * 5).to(device)
-elif args.ZUKO_ID == "NICE":
-    flow = zuko.flows.NICE(5, 0, transforms=3, hidden_features=[128] * 3).to(device)
-elif args.ZUKO_ID == "MAF":
-    flow = zuko.flows.MAF(5, 0, transforms=4, hidden_features=[256] * 3).to(device)
+#elif args.ZUKO_ID == "NICE":
+#    flow = zuko.flows.NICE(5, 0, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
+#elif args.ZUKO_ID == "MAF":
+#    flow = zuko.flows.MAF(5, 0, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
 elif args.ZUKO_ID == "NCSF":
-    flow = zuko.flows.NCSF(5, 0, transforms=3, hidden_features=[128] * 3, bins=16).to(device)
+    flow = zuko.flows.NCSF(5, 0, transforms=args.TRANSFORMS, hidden_features=hidden_features, bins=16).to(device)
 elif args.ZUKO_ID == "SOSPF":
-    flow = zuko.flows.SOSPF(5, 0, transforms=3, hidden_features=[128] * 3, degree=4, polynomials=3).to(device)
-elif args.ZUKO_ID == "NAF":
-    flow = zuko.flows.NAF(5, 0, transforms=3, hidden_features=[128] * 3).to(device)
+    flow = zuko.flows.SOSPF(5, 0, transforms=args.TRANSFORMS, hidden_features=hidden_features, degree=4, polynomials=3).to(device)
+#elif args.ZUKO_ID == "NAF":
+#    flow = zuko.flows.NAF(5, 0, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
 elif args.ZUKO_ID == "UNAF":
-    flow = zuko.flows.UNAF(5, 0, transforms=3, hidden_features=[128] * 3).to(device)
+    flow = zuko.flows.UNAF(5, 0, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
 elif args.ZUKO_ID == "CNF":
-    flow = zuko.flows.CNF(5, 0, hidden_features=[256] * 3).to(device)
-elif args.ZUKO_ID == "GF":
-    flow = zuko.flows.GF(5, 0, transforms=9, hidden_features=[256] * 5, components=8).to(device)
-elif args.ZUKO_ID == "BPF":
-    flow = zuko.flows.BPF(5, 0, transforms=5, hidden_features=[256] * 3, degree=16).to(device)
+    flow = zuko.flows.CNF(5, 0, hidden_features=hidden_features, freqs=args.FREQS).to(device)
+#elif args.ZUKO_ID == "GF":
+#    flow = zuko.flows.GF(5, 0, transforms=args.TRANSFORMS, hidden_features=hidden_features, components=8).to(device)
+#elif args.ZUKO_ID == "BPF":
+#    flow = zuko.flows.BPF(5, 0, transforms=args.TRANSFORMS, hidden_features=hidden_features, degree=16).to(device)
 else:
     print("ERROR: Unknown ZUKO_ID")
     exit()
@@ -248,8 +266,10 @@ else:
 
 num_params = count_parameters(flow)
 print(f"Number of trainable parameters: {num_params}")
-with open(f"{save_dir}/num_params.txt", "w") as ofile:
-    ofile.write(f"Number of trainable parameters: {num_params}")
+
+
+wandb.log({"num_trainable_params": num_params})
+wandb.run.summary["num_trainable_params"] = num_params
 
 if args.TRAIN_FLOW:
     print("Training flow...")
@@ -293,13 +313,20 @@ if args.TRAIN_FLOW:
             epoch_losses_val.append(loss.item())
             pbar.set_postfix(loss=f"{loss.item():.3e}, epoch {k}")
 
+        
         losses_val.append(np.mean(epoch_losses_val))
 
+        wandb.log({
+            "epoch": k,
+            "train_loss": losses_train[-1],
+            "val_loss": losses_val[-1],
+        })
+        
         if losses_val[-1] < best_val_loss:
             best_val_loss = losses_val[-1]
             #print("new best val loss", losses_val[-1])
             
-            torch.save(flow.state_dict(), f"{save_dir}/test.pt")
+        torch.save(flow.state_dict(), f"{save_dir}/test.pt")
 
         if (k + 1) % args.PLOT_EPOCH_INTERVAL == 0:
         
@@ -399,8 +426,17 @@ if args.EVAL_FLOW:
                 ofile.write("Feature {i} KL div: {ks_dist} (for gaussian: {ks_gauss})".format(i=i, ks_dist=ks_dist, ks_gauss=ks_dists_gaussians[i]))
                 ofile.write("\n")
             
-            auc_mean, auc_std, best_epoch, max_epochs = discriminate_data_from_samples(data,  X_samples[key], n_runs=5, bdt_config="configs/bdt.yml")
+            auc_mean, auc_std, best_epoch, max_epochs = discriminate_data_from_samples(data,  X_samples[key], n_runs=args.NUM_BDTS, bdt_config="configs/bdt.yml")
             ofile.write(f"auc {auc_mean} \pm {auc_std}. best epoch {best_epoch} of {max_epochs}.\n")
 
+    wandb.log({
+        "auc_mean": auc_mean,
+        "auc_std": auc_std,
+        "bdt_best_epoch": best_epoch
+            })
+        
+    wandb.run.summary["auc_mean"] = auc_mean
+    wandb.run.summary["auc_std"] = auc_std
 
+wandb.finish()
     # %%
