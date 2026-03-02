@@ -19,33 +19,46 @@ def logit_transform(x, all_min, all_max, cushion ):
 
 
 
-def preprocess_data(X, flow_training_dir):
+def preprocess_data(X, flow_training_dir, ZUKO_ID):
+    """
+    Preprocess data without modifying the original array.
+    Applies log to the first column and standardizes all columns.
+    """
 
-    minmax_scaler = MinMaxScaler()
-    standard_scaler = StandardScaler()
-        
-    X_preproc = minmax_scaler.fit_transform(X)
-    for i in range(X.shape[1]):
-        X_preproc[:,i] = logit_transform(X_preproc[:,i], 0.0, 1.0, 0.0)
-    X_preproc = standard_scaler.fit_transform(X_preproc)
+    if ZUKO_ID in ["UNAF", "NCSF"]:
+        min_max_scaler = MinMaxScaler(feature_range=(-3,3))
+        X_preproc = min_max_scaler.fit_transform(X)
+        with open(f"{flow_training_dir}/minmax", "wb") as ofile:
+            pickle.dump(min_max_scaler, ofile)
 
-    with open(f"{flow_training_dir}/minmax", "wb") as ofile:
-        pickle.dump(minmax_scaler, ofile)
-    with open(f"{flow_training_dir}/standard", "wb") as ofile:
-        pickle.dump(standard_scaler, ofile)
-        
+
+    else:
+        standard_scaler = StandardScaler()
+        X_preproc = standard_scaler.fit_transform(X)
+        with open(f"{flow_training_dir}/standard", "wb") as ofile:
+            pickle.dump(standard_scaler, ofile)
+    
+
     return X_preproc
 
-def inverse_preprocess_data(X_preproc, flow_training_dir):
 
-    with open(f"{flow_training_dir}/minmax", "rb") as ifile:
-        minmax_scaler = pickle.load(ifile)
-    with open(f"{flow_training_dir}/standard", "rb") as ifile:
-        standard_scaler = pickle.load(ifile)
+def inverse_preprocess_data(X_preproc, flow_training_dir, ZUKO_ID):
+    """
+    Inverse preprocessing without modifying the input array.
+    Inverts standardization and applies exp to the first column.
+    """
+    # load scaler
+    if ZUKO_ID in ["UNAF", "NCSF"]:
+        with open(f"{flow_training_dir}/minmax", "rb") as ifile:
+            min_max_scaler = pickle.load(ifile)
+        X = min_max_scaler.inverse_transform(X_preproc)
 
-    X = standard_scaler.inverse_transform(X_preproc)
-    X = np.exp(X) / (1.0 + np.exp(X))    
-    X = minmax_scaler.inverse_transform(X)
+    else:
+        with open(f"{flow_training_dir}/standard", "rb") as ifile:
+            standard_scaler = pickle.load(ifile)
+        X = standard_scaler.inverse_transform(X_preproc)
+        
+    
 
     return X
 

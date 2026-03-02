@@ -24,7 +24,8 @@ import argparse
 import yaml
 from numba import cuda
 import zuko
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from helpers.data_transforms import preprocess_data, inverse_preprocess_data
+
 from helpers.models.DNN import count_parameters
 from helpers.evaluation import get_kl_dist, discriminate_data_from_samples
 
@@ -41,23 +42,31 @@ BIN_BOUND = 5
 NUM_BINS = 100
 NUM_FEATURES = 5
 
-ZUKO_ID = "CNF"
-SEED = 8
+
+
+ZUKO_ID = "NCSF"
+NAME = "XL_2048"
 BATCH_SIZE = 256
 NUM_COND_INPUTS = 0
+
+SEED = 8
 
 
 
 
 # %%
-save_dir = f"outputs/{ZUKO_ID}"
-os.makedirs(save_dir, exist_ok=True)
+save_dir = f"/pscratch/sd/r/rmastand/muon/zuko_outputs/{ZUKO_ID}/{NAME}"
+
+
+with open(f"{save_dir}/wandb/latest-run/files/config.yaml") as ifile:
+    configs = yaml.safe_load(ifile)
+
 
 # %%
 
 # computing
-device = cuda.get_current_device()
-device.reset()
+#device = cuda.get_current_device()
+#device.reset()
 torch.set_num_threads(2)
 device = torch.device( "cuda" if torch.cuda.is_available() else "cpu")
 print( "Using device: " + str( device ), flush=True)
@@ -128,57 +137,10 @@ for i in range(data.shape[1]):
     else:
         bins_dict[i] = np.linspace(np.min(data[:,i] - 3), np.max(data[:,i] + 3), NUM_BINS) 
 
-
-# %%
-
-def preprocess_data(X, flow_training_dir):
-    """
-    Preprocess data without modifying the original array.
-    Applies log to the first column and standardizes all columns.
-    """
-
-    if ZUKO_ID in ["UNAF", "NCSF"]:
-        min_max_scaler = MinMaxScaler(feature_range=(-3,3))
-        X_preproc = min_max_scaler.fit_transform(X)
-        with open(f"{flow_training_dir}/minmax", "wb") as ofile:
-            pickle.dump(min_max_scaler, ofile)
-
-
-    else:
-        standard_scaler = StandardScaler()
-        X_preproc = standard_scaler.fit_transform(X)
-        with open(f"{flow_training_dir}/standard", "wb") as ofile:
-            pickle.dump(standard_scaler, ofile)
-    
-
-    return X_preproc
-
-
-def inverse_preprocess_data(X_preproc, flow_training_dir,):
-    """
-    Inverse preprocessing without modifying the input array.
-    Inverts standardization and applies exp to the first column.
-    """
-    # load scaler
-    if ZUKO_ID in ["UNAF", "NCSF"]:
-        with open(f"{flow_training_dir}/minmax", "rb") as ifile:
-            min_max_scaler = pickle.load(ifile)
-        X = min_max_scaler.inverse_transform(X_preproc)
-
-    else:
-        with open(f"{flow_training_dir}/standard", "rb") as ifile:
-            standard_scaler = pickle.load(ifile)
-        X = standard_scaler.inverse_transform(X_preproc)
-        
-    
-
-    return X
-
-
 # %%
 
 
-X_preproc = preprocess_data(data, ".")
+X_preproc = preprocess_data(data, ".", ZUKO_ID)
 if NUM_COND_INPUTS == 1:
     X_preproc = np.hstack([X_preproc,  context])
 elif NUM_COND_INPUTS == 0:
@@ -188,54 +150,23 @@ else:
     exit()
 
 
-plot_hists_1d({"data":data}, bins_dict, log_dims=log_vars, labels=feature_labels)
-plt.show()
-
-plot_hists_1d({"data":X_preproc}, bins_dict_preproc, log_dims=[], labels = feature_labels)
-plt.show()
-
 
 # %%
-# train val split
-from sklearn.model_selection import train_test_split
-
-data_train, data_val = train_test_split(X_preproc, test_size=0.2, random_state=42)
-
-print(f"Train data has shape {data_train.shape}.")
-print(f"Val data has shape {data_val.shape}.")
 
 
-train_loader = torch.utils.data.DataLoader(data_train, batch_size=BATCH_SIZE, shuffle=True, num_workers = 8, pin_memory = True)
-val_loader = torch.utils.data.DataLoader(data_val, batch_size=BATCH_SIZE, shuffle=False, num_workers = 8, pin_memory = True)
+hidden_features = [int(x) for x in configs["HIDDEN_FEATURES"]["value"].split(",")]
 
-
-# %%
-import zuko
-
-# Neural spline flow (NSF) with 3 sample features and 5 context features
 
 if ZUKO_ID == "NSF":
-    flow = zuko.flows.NSF(5, 0, transforms=3, hidden_features=[128] * 3).to(device)
-#elif ZUKO_ID == "GMM":
-#    flow = zuko.flows.GMM(5, 0, components=30, hidden_features=[256] * 5).to(device)
-elif ZUKO_ID == "NICE":
-    flow = zuko.flows.NICE(5, 0, transforms=3, hidden_features=[128] * 3).to(device)
-elif ZUKO_ID == "MAF":
-    flow = zuko.flows.MAF(5, 0, transforms=4, hidden_features=[256] * 3).to(device)
+    flow = zuko.flows.NSF(5, 0, transforms=configs["TRANSFORMS"]["value"], hidden_features=hidden_features).to(device)
 elif ZUKO_ID == "NCSF":
-    flow = zuko.flows.NCSF(5, 0, transforms=3, hidden_features=[128] * 3, bins=16).to(device)
+    flow = zuko.flows.NCSF(5, 0, transforms=configs["TRANSFORMS"]["value"], hidden_features=hidden_features, bins=16).to(device)
 elif ZUKO_ID == "SOSPF":
-    flow = zuko.flows.SOSPF(5, 0, transforms=3, hidden_features=[128] * 3, degree=4, polynomials=3).to(device)
-elif ZUKO_ID == "NAF":
-    flow = zuko.flows.NAF(5, 0, transforms=3, hidden_features=[128] * 3).to(device)
+    flow = zuko.flows.SOSPF(5, 0, transforms=configs["TRANSFORMS"]["value"], hidden_features=hidden_features, degree=4, polynomials=3).to(device)
 elif ZUKO_ID == "UNAF":
-    flow = zuko.flows.UNAF(5, 0, transforms=3, hidden_features=[128] * 3).to(device)
+    flow = zuko.flows.UNAF(5, 0, transforms=configs["TRANSFORMS"]["value"], hidden_features=hidden_features).to(device)
 elif ZUKO_ID == "CNF":
-    flow = zuko.flows.CNF(5, 0, hidden_features=[256] * 3).to(device)
-elif ZUKO_ID == "GF":
-    flow = zuko.flows.GF(5, 0, transforms=9, hidden_features=[256] * 5, components=8).to(device)
-elif ZUKO_ID == "BPF":
-    flow = zuko.flows.BPF(5, 0, transforms=5, hidden_features=[256] * 3, degree=16).to(device)
+    flow = zuko.flows.CNF(5, 0, hidden_features=hidden_features, freqs=configs["FREQS"]["value"]).to(device)
 else:
     print("ERROR: Unknown ZUKO_ID")
     exit()
@@ -243,11 +174,8 @@ else:
 
 num_params = count_parameters(flow)
 print(f"Number of trainable parameters: {num_params}")
-with open(f"{save_dir}/num_params.txt", "w") as ofile:
-    ofile.write(f"Number of trainable parameters: {num_params}")
 
 
-# %%
 
 # %%
 
@@ -280,13 +208,20 @@ X_samples = {
 # %%
 for key in X_samples.keys():
     
-    X_samples[key] = inverse_preprocess_data( X_samples[key] , ".")
+    X_samples[key] = inverse_preprocess_data( X_samples[key] , ".", ZUKO_ID)
 
 
 # %%
 
 plot_hists_1d({"data":data, **X_samples}, bins_dict, log_dims=log_vars, labels=feature_labels)
-plt.savefig(f"{save_dir}/hists_final")
+
+
+try:
+    with open(f"{save_dir}/results.txt") as ifile:
+        a = ifile.readlines()[-1]
+        print(a)
+except:
+    pass
 
 
 # %%
@@ -298,7 +233,6 @@ for key in X_samples.keys():
         log_dims=log_vars,
         title= key,
     )
-    plt.savefig(f"{save_dir}/corner_{key}_final")
 
 
 
@@ -324,39 +258,40 @@ def get_x_y_mask(X, layer_radii=(819, 1153, 1486), thickness=15):
 
 
 m = get_x_y_mask(data)
-print(len(m))
-print(sum(m))
+print("Num. hits before mask:", len(m))
+print("Num. hits after mask:", sum(m))
 
 
 plt.figure(figsize = (5,5))
-plt.hist2d(data[:,1], data[:,2], bins = 500)
+plt.hist2d(data[:,1], data[:,2], bins = [np.linspace(-1500,1500,500), np.linspace(-1500,1500,500)])
 plt.show()
 
 
 plt.figure(figsize = (5,5))
-plt.hist2d(data[m][:,1], data[m][:,2], bins = 500)
+plt.hist2d(data[m][:,1], data[m][:,2], bins = [np.linspace(-1500,1500,500), np.linspace(-1500,1500,500)])
 plt.show()
 
 
 # %%
 m = get_x_y_mask(X_samples["flow_samples"])
-print(len(m))
-print(sum(m))
+print("Num. hits before mask:", len(m))
+print("Num. hits after mask:", sum(m))
+
 
 
 plt.figure(figsize = (5,5))
-plt.hist2d(X_samples["flow_samples"][:,1], X_samples["flow_samples"][:,2], bins = 500)
+plt.hist2d(X_samples["flow_samples"][:,1], X_samples["flow_samples"][:,2], bins = [np.linspace(-1500,1500,500), np.linspace(-1500,1500,500)])
 plt.show()
 
 
 plt.figure(figsize = (5,5))
-plt.hist2d(X_samples["flow_samples"][m][:,1], X_samples["flow_samples"][m][:,2], bins = 500)
+plt.hist2d(X_samples["flow_samples"][m][:,1], X_samples["flow_samples"][m][:,2], bins = [np.linspace(-1500,1500,500), np.linspace(-1500,1500,500)])
 plt.show()
 
 
 
 # %%
-
+print(ZUKO_ID, NAME)
 plot_hists_1d({"data":data, **X_samples, "truncated":X_samples["flow_samples"][m]}, bins_dict, log_dims=log_vars, labels=feature_labels)
 plt.savefig(f"{save_dir}/hists_final")
 

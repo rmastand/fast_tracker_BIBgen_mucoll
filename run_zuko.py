@@ -25,8 +25,8 @@ import yaml
 from numba import cuda
 import wandb
 import zuko
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from helpers.models.DNN import count_parameters
+from helpers.data_transforms import preprocess_data, inverse_preprocess_data
 from helpers.evaluation import get_kl_dist, discriminate_data_from_samples
 
 plt.style.use("../science.mplstyle")
@@ -150,56 +150,11 @@ for i in range(data.shape[1]):
         bins_dict[i] = np.linspace(np.min(data[:,i] - 3), np.max(data[:,i] + 3), NUM_BINS) 
 
 
-# %%
-
-def preprocess_data(X, flow_training_dir):
-    """
-    Preprocess data without modifying the original array.
-    Applies log to the first column and standardizes all columns.
-    """
-
-    if args.ZUKO_ID in ["UNAF", "NCSF"]:
-        min_max_scaler = MinMaxScaler(feature_range=(-3,3))
-        X_preproc = min_max_scaler.fit_transform(X)
-        with open(f"{flow_training_dir}/minmax", "wb") as ofile:
-            pickle.dump(min_max_scaler, ofile)
-
-
-    else:
-        standard_scaler = StandardScaler()
-        X_preproc = standard_scaler.fit_transform(X)
-        with open(f"{flow_training_dir}/standard", "wb") as ofile:
-            pickle.dump(standard_scaler, ofile)
-    
-
-    return X_preproc
-
-
-def inverse_preprocess_data(X_preproc, flow_training_dir,):
-    """
-    Inverse preprocessing without modifying the input array.
-    Inverts standardization and applies exp to the first column.
-    """
-    # load scaler
-    if args.ZUKO_ID in ["UNAF", "NCSF"]:
-        with open(f"{flow_training_dir}/minmax", "rb") as ifile:
-            min_max_scaler = pickle.load(ifile)
-        X = min_max_scaler.inverse_transform(X_preproc)
-
-    else:
-        with open(f"{flow_training_dir}/standard", "rb") as ifile:
-            standard_scaler = pickle.load(ifile)
-        X = standard_scaler.inverse_transform(X_preproc)
-        
-    
-
-    return X
-
 
 # %%
 
 
-X_preproc = preprocess_data(data, ".")
+X_preproc = preprocess_data(data, ".", args.ZUKO_ID)
 if args.NUM_COND_INPUTS == 1:
     X_preproc = np.hstack([X_preproc,  context])
 elif args.NUM_COND_INPUTS == 0:
@@ -341,8 +296,8 @@ if args.TRAIN_FLOW:
             
             samples = flow().sample((10000,)).detach().cpu().numpy()
                 
-            loc_data_dict = {"data": inverse_preprocess_data( data_val , "."),
-                    "generated": inverse_preprocess_data( samples , ".")}
+            loc_data_dict = {"data": inverse_preprocess_data( data_val , ".", args.ZUKO_ID),
+                    "generated": inverse_preprocess_data( samples , ".", args.ZUKO_ID)}
             plot_hists_1d(loc_data_dict, bins_dict, log_dims=log_vars, labels=feature_labels)
             plt.savefig(f"{save_dir}/hists")
 
@@ -389,7 +344,7 @@ if args.EVAL_FLOW:
     # %%
     for key in X_samples.keys():
         
-        X_samples[key] = inverse_preprocess_data( X_samples[key] , ".")
+        X_samples[key] = inverse_preprocess_data( X_samples[key] , ".", args.ZUKO_ID)
 
 
     # %%
