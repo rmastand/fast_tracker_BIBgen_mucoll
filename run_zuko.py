@@ -45,10 +45,13 @@ NUM_FEATURES = 5
 parser = argparse.ArgumentParser()
 parser.add_argument("--ZUKO_ID", type=str, default="NSF", help="Zuko model ID")
 parser.add_argument("--NAME", type=str, default="", help="Zuko model ID")
+parser.add_argument("--COLLECTION_LIST", type=str, default="OuterTrackerBarrelCollection")
+
 
 parser.add_argument("--SEED", type=int, default=8, help="Random seed")
 parser.add_argument("--NUM_EPOCHS", type=int, default=5, help="Number of training epochs")
 parser.add_argument("--LEARNING_RATE", type=float, default=1e-3, help="Learning rate")
+parser.add_argument("--TRAINING_FRAC", type=float, default=0.5, help="Learning rate")
 parser.add_argument("--BATCH_SIZE", type=int, default=512, help="Batch size")
 parser.add_argument("--NUM_COND_INPUTS", type=int, default=0, help="Number of conditional inputs")
 parser.add_argument("--TRANSFORMS", type=int, default=3, help="Number of transforms ")
@@ -62,9 +65,11 @@ parser.add_argument("--NUM_BDTS", type=int, default=5, help="Number of transform
 
 args = parser.parse_args()
 
+working_dir = "/pscratch/sd/r/rmastand/muon_collider"
+
 
 # %%
-save_dir = f"/pscratch/sd/r/rmastand/muon/zuko_outputs/{args.ZUKO_ID}/{args.NAME}"
+save_dir = f"{working_dir}/zuko_outputs/{args.ZUKO_ID}/{args.NAME}"
 os.makedirs(save_dir, exist_ok=True)
 wandb.init(
     project="zuko-flows",          # change if you want
@@ -77,46 +82,14 @@ wandb.init(
 # %%
 
 # computing
-device = cuda.get_current_device()
-device.reset()
-torch.set_num_threads(2)
 device = torch.device( "cuda" if torch.cuda.is_available() else "cpu")
 print( "Using device: " + str( device ), flush=True)
 seed = int(args.SEED)
 torch.manual_seed(seed)
 np.random.seed(seed)
 
-# %%
-collections_TrackerHitPlane = [
-    "IBTrackerHits",
-    "IBTrackerHitsConed",
-    "IETrackerHits", 
-    "IETrackerHitsConed",
-    "OBTrackerHits",
-    "OBTrackerHitsConed", 
-    "OETrackerHits",        
-    "OETrackerHitsConed",          
-    "VBTrackerHits",               
-    "VBTrackerHitsConed",   
-    "VETrackerHits",  
-    "VETrackerHitsConed",        
-]
-
-collections_SimTrackerHit = [
-  #  "InnerTrackerBarrelCollection",
-   # "InnerTrackerBarrelCollectionConed",
- #   "InnerTrackerEndcapCollection",
-    #"InnerTrackerEndcapCollectionConed", 
-    "OuterTrackerBarrelCollection",     
-   # "OuterTrackerBarrelCollectionConed",
- #   "OuterTrackerEndcapCollection",  
-   # "OuterTrackerEndcapCollectionConed",
- #   "VertexBarrelCollection",   
-   # "VertexBarrelCollectionConed",   
-  #  "VertexEndcapCollection",
-   # "VertexEndcapCollectionConed",
-]
-
+collection_list = [x for x in args.COLLECTION_LIST.split(",")]
+print(collection_list)
 
 
 feature_labels = ["log($E$) [Gev]", "$x$", "$y$", "$z$", "$t$ [s]", "context"]
@@ -127,16 +100,14 @@ log_vars = []
 data = []
 context = []
 
-for i, collection in enumerate(collections_SimTrackerHit): # TODO coned too?
-
-    tmp_data = np.load(f"/pscratch/sd/r/rmastand/muon/npys/{collection}_SimTrackerHit.npy")
-    tmp_context = int(i)*np.ones((tmp_data.shape[0],1))
+for i, collection in enumerate(collection_list):
+    tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit.npy")
+    tmp_context = int(i)*np.ones((int(len(tmp_data)*args.TRAINING_FRAC),1))
     context.append(tmp_context)
-    data.append(tmp_data[:int(len(tmp_data)*.1)])
-
+    data.append(tmp_data[:int(len(tmp_data)*args.TRAINING_FRAC)])
+    
 
 data = np.vstack(data)[:,[0,2,3,4,5]]
-#data = data[data[:,0] > 2e-6]
 data[:,0] = np.log(data[:,0])
 context = np.vstack(context)
 
