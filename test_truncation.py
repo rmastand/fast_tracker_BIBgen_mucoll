@@ -44,18 +44,20 @@ NUM_FEATURES = 5
 
 
 
-ZUKO_ID = "NCSF"
-NAME = "XL_2048"
-BATCH_SIZE = 256
+ZUKO_ID = "UNAF"
+NAME = "M_2048"
+BATCH_SIZE = 512
 NUM_COND_INPUTS = 0
-
+COLLECTION_NAME = "OuterTrackerBarrelCollection"
 SEED = 8
 
 
 
+working_dir = "/pscratch/sd/r/rmastand/muon_collider"
+
 
 # %%
-save_dir = f"/pscratch/sd/r/rmastand/muon/zuko_outputs/{ZUKO_ID}/{NAME}"
+save_dir = f"{working_dir}/zuko_outputs/{ZUKO_ID}/{NAME}"
 
 
 with open(f"{save_dir}/wandb/latest-run/files/config.yaml") as ifile:
@@ -64,10 +66,7 @@ with open(f"{save_dir}/wandb/latest-run/files/config.yaml") as ifile:
 
 # %%
 
-# computing
-#device = cuda.get_current_device()
-#device.reset()
-torch.set_num_threads(2)
+# computingtorch.set_num_threads(2)
 device = torch.device( "cuda" if torch.cuda.is_available() else "cpu")
 print( "Using device: " + str( device ), flush=True)
 seed = int(SEED)
@@ -75,37 +74,6 @@ torch.manual_seed(seed)
 np.random.seed(seed)
 
 # %%
-collections_TrackerHitPlane = [
-    "IBTrackerHits",
-    "IBTrackerHitsConed",
-    "IETrackerHits", 
-    "IETrackerHitsConed",
-    "OBTrackerHits",
-    "OBTrackerHitsConed", 
-    "OETrackerHits",        
-    "OETrackerHitsConed",          
-    "VBTrackerHits",               
-    "VBTrackerHitsConed",   
-    "VETrackerHits",  
-    "VETrackerHitsConed",        
-]
-
-collections_SimTrackerHit = [
-  #  "InnerTrackerBarrelCollection",
-   # "InnerTrackerBarrelCollectionConed",
- #   "InnerTrackerEndcapCollection",
-    #"InnerTrackerEndcapCollectionConed", 
-    "OuterTrackerBarrelCollection",     
-   # "OuterTrackerBarrelCollectionConed",
- #   "OuterTrackerEndcapCollection",  
-   # "OuterTrackerEndcapCollectionConed",
- #   "VertexBarrelCollection",   
-   # "VertexBarrelCollectionConed",   
-  #  "VertexEndcapCollection",
-   # "VertexEndcapCollectionConed",
-]
-
-
 
 feature_labels = ["log($E$) [Gev]", "$x$", "$y$", "$z$", "$t$ [s]", "context"]
 log_vars = []
@@ -115,18 +83,14 @@ log_vars = []
 data = []
 context = []
 
-for i, collection in enumerate(collections_SimTrackerHit): # TODO coned too?
 
-    tmp_data = np.load(f"/pscratch/sd/r/rmastand/muon/npys/{collection}_SimTrackerHit.npy")
-    tmp_context = int(i)*np.ones((tmp_data.shape[0],1))
-    context.append(tmp_context)
-    data.append(tmp_data[:int(len(tmp_data)*.1)])
+tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{COLLECTION_NAME}_SimTrackerHit.npy")
+data.append(tmp_data[:int(len(tmp_data)*.1)])
 
 
 data = np.vstack(data)[:,[0,2,3,4,5]]
 #data = data[data[:,0] > 2e-6]
 data[:,0] = np.log(data[:,0])
-context = np.vstack(context)
 
 bins_dict = {}
 bins_dict_preproc = {i:np.linspace(-BIN_BOUND, BIN_BOUND, NUM_BINS) for i in range(data.shape[1])}
@@ -293,7 +257,6 @@ plt.show()
 # %%
 print(ZUKO_ID, NAME)
 plot_hists_1d({"data":data, **X_samples, "truncated":X_samples["flow_samples"][m]}, bins_dict, log_dims=log_vars, labels=feature_labels)
-plt.savefig(f"{save_dir}/hists_final")
 
 
 fig_samp, axes_samp = plot_corner_hist_2d(
@@ -303,5 +266,75 @@ fig_samp, axes_samp = plot_corner_hist_2d(
         log_dims=log_vars,
         title= key,
     )
+
+# %%
+ks_dists_samples = get_kl_dist(data, X_samples["flow_samples"])
+ks_dists_gaussians = get_kl_dist(np.random.normal(size = data.shape), np.random.normal(size =  X_samples["flow_samples"].shape))
+
+                                        
+for i, ks_dist in enumerate(ks_dists_samples):
+    print("Feature {i} KL div: {ks_dist} (for gaussian: {ks_gauss})".format(i=i, ks_dist=ks_dist, ks_gauss=ks_dists_gaussians[i]))
+
+auc_mean, auc_std, best_epoch_list, max_epochs, bdt_list = discriminate_data_from_samples(data,  X_samples["flow_samples"], n_runs=5, bdt_config="configs/bdt.yml")
+print(f"auc {auc_mean} \pm {auc_std}. best epoch {best_epoch_list} of {max_epochs}.\n")
+
+
+
+# %%
+
+loc_scores = []
+for i, bdt_i in enumerate(bdt_list):
+
+    loc_scores.append(bdt_i.predict_proba(
+            X_samples["flow_samples"], iteration_range=(0, best_epoch_list[i])
+        )[:, 0].reshape(-1, 1))
+
+loc_scores = np.mean(np.concatenate(loc_scores, axis = 1), axis = 1)
+                    
+
+plt.figure()
+plt.hist(loc_scores, bins = np.linspace(0, 1, 100), histtype = "step", density = True)
+plt.xlabel("scores")
+plt.ylabel("Density")
+plt.show()
+
+
+X_plot = {}
+
+percentiles = [50, 75, 90, 95, 99]
+for p in percentiles:
+    X_plot[f"Top {p} percentile"] =  X_samples["flow_samples"][loc_scores > np.percentile(loc_scores, p)]
+
+
+
+plot_hists_1d({"data":data, **X_plot}, bins_dict, log_dims=log_vars, labels=feature_labels)
+
+
+
+
+# %%
+ks_dists_samples = get_kl_dist(data, X_samples["flow_samples"][m])
+ks_dists_gaussians = get_kl_dist(np.random.normal(size = data.shape), np.random.normal(size =  X_samples["flow_samples"][m].shape))
+
+                                        
+for i, ks_dist in enumerate(ks_dists_samples):
+    print("Feature {i} KL div: {ks_dist} (for gaussian: {ks_gauss})".format(i=i, ks_dist=ks_dist, ks_gauss=ks_dists_gaussians[i]))
+
+auc_mean, auc_std, best_epoch, max_epochs = discriminate_data_from_samples(data,  X_samples["flow_samples"][m], n_runs=5, bdt_config="configs/bdt.yml")
+print(f"auc {auc_mean} \pm {auc_std}. best epoch {best_epoch} of {max_epochs}.\n")
+
+
+# %%
+
+# save out
+print(X_samples["flow_samples"])
+print(X_samples["flow_samples"].shape)
+
+
+# %%
+
+np.save(X_samples["flow_samples"], f"{working_dir}/npys/flow_samples/{COLLECTION_NAME}_{ZUKO_ID}_{NAME}")
+
+# %%
 
 # %%
