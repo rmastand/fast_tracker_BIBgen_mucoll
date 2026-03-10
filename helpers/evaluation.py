@@ -45,6 +45,8 @@ def discriminate_data_from_samples(data, samples, n_runs, bdt_config):
     )
 
     auc_list = []
+    best_epoch_list = []
+    bdt_list = []
 
     for i in range(n_runs):
 
@@ -76,55 +78,14 @@ def discriminate_data_from_samples(data, samples, n_runs, bdt_config):
         print(f"   auc={loc_auc}")
 
         auc_list.append(loc_auc)
+        best_epoch_list.append(best_epoch)
+        bdt_list.append(bst_i)
 
     return (
         np.mean(auc_list),
         np.std(auc_list),
-        bst_i.best_iteration,
+        best_epoch_list,
         bdt_hyperparams_dict["n_estimators"],
+        bdt_list
     )
 
-
-"""
-LaCATHODE option
-"""
-
-import torch
-from helpers.density_estimator import DensityEstimator
-
-
-def convert_to_latent_space_true_cathode(
-    samples_to_convert, num_inputs, flow_training_dir, config_file, device
-):
-
-    val_losses = np.load(os.path.join(flow_training_dir, "flow_val_losses.npy"))
-
-    # get epoch of best val loss
-    best_epoch = np.argmin(val_losses) - 1
-    model_path = f"{flow_training_dir}/flow_epoch_{best_epoch}.par"
-
-    eval_model = DensityEstimator(
-        config_file,
-        num_inputs,
-        eval_mode=True,
-        load_path=model_path,
-        device=device,
-        verbose=False,
-        bound=False,
-    )
-
-    context_masses = (
-        torch.tensor(samples_to_convert[:, -1].reshape(-1, 1)).float().to(device)
-    )
-
-    outputs_normal_target = eval_model.model.forward(
-        torch.tensor(samples_to_convert[:, :-1]).float().to(device),
-        context_masses,
-        mode="direct",
-    )[0]
-    return np.hstack(
-        [
-            outputs_normal_target.detach().cpu().numpy(),
-            samples_to_convert[:, -1].reshape(-1, 1),
-        ]
-    )
