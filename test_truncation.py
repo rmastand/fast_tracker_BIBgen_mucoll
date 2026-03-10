@@ -41,11 +41,11 @@ from helpers.plotting import plot_hists_1d, plot_corner_hist_2d
 BIN_BOUND = 5
 NUM_BINS = 100
 NUM_FEATURES = 5
+NUM_BDTS = 10
 
 
-
-ZUKO_ID = "UNAF"
-NAME = "M_2048"
+ZUKO_ID = "NSF"
+NAME = "L_2048"
 BATCH_SIZE = 512
 NUM_COND_INPUTS = 0
 COLLECTION_NAME = "OuterTrackerBarrelCollection"
@@ -275,7 +275,7 @@ ks_dists_gaussians = get_kl_dist(np.random.normal(size = data.shape), np.random.
 for i, ks_dist in enumerate(ks_dists_samples):
     print("Feature {i} KL div: {ks_dist} (for gaussian: {ks_gauss})".format(i=i, ks_dist=ks_dist, ks_gauss=ks_dists_gaussians[i]))
 
-auc_mean, auc_std, best_epoch_list, max_epochs, bdt_list = discriminate_data_from_samples(data,  X_samples["flow_samples"], n_runs=5, bdt_config="configs/bdt.yml")
+auc_mean, auc_std, best_epoch_list, max_epochs, bdt_list = discriminate_data_from_samples(data,  X_samples["flow_samples"], n_runs=NUM_BDTS, bdt_config="configs/bdt.yml")
 print(f"auc {auc_mean} \pm {auc_std}. best epoch {best_epoch_list} of {max_epochs}.\n")
 
 
@@ -299,11 +299,12 @@ plt.ylabel("Density")
 plt.show()
 
 
-X_plot = {}
+X_plot = {"samples":  X_samples["flow_samples"]}
 
-percentiles = [50, 75, 90, 95, 99]
+percentiles = [50, 90, 99]
+
 for p in percentiles:
-    X_plot[f"Top {p} percentile"] =  X_samples["flow_samples"][loc_scores > np.percentile(loc_scores, p)]
+    X_plot[f"samples, top {p}%"] =  X_samples["flow_samples"][loc_scores >= np.percentile(loc_scores, p)]
 
 
 
@@ -320,7 +321,7 @@ ks_dists_gaussians = get_kl_dist(np.random.normal(size = data.shape), np.random.
 for i, ks_dist in enumerate(ks_dists_samples):
     print("Feature {i} KL div: {ks_dist} (for gaussian: {ks_gauss})".format(i=i, ks_dist=ks_dist, ks_gauss=ks_dists_gaussians[i]))
 
-auc_mean, auc_std, best_epoch, max_epochs = discriminate_data_from_samples(data,  X_samples["flow_samples"][m], n_runs=5, bdt_config="configs/bdt.yml")
+auc_mean, auc_std, best_epoch, max_epochs = discriminate_data_from_samples(data,  X_samples["flow_samples"][m], n_runs=NUM_BDTS, bdt_config="configs/bdt.yml")
 print(f"auc {auc_mean} \pm {auc_std}. best epoch {best_epoch} of {max_epochs}.\n")
 
 
