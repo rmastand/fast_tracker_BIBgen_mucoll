@@ -44,32 +44,32 @@ NUM_FEATURES = 5
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--ZUKO_ID", type=str, default="NSF", help="Zuko model ID")
-parser.add_argument("--NAME", type=str, default="", help="Zuko model ID")
+parser.add_argument("--NAME", type=str, default="", help="Name")
 parser.add_argument("--COLLECTION_LIST", type=str, default="OuterTrackerBarrelCollection")
+parser.add_argument("--WORKING_DIR", default="/pscratch/sd/r/rmastand/muon_collider", type=str, help="Where to store model outputs and plots")
 
 
 parser.add_argument("--SEED", type=int, default=8, help="Random seed")
 parser.add_argument("--NUM_EPOCHS", type=int, default=5, help="Number of training epochs")
 parser.add_argument("--LEARNING_RATE", type=float, default=1e-3, help="Learning rate")
-parser.add_argument("--TRAINING_FRAC", type=float, default=0.5, help="Learning rate")
+parser.add_argument("--TRAINING_FRAC", type=float, default=0.5, help="How much training data to use")
 parser.add_argument("--BATCH_SIZE", type=int, default=512, help="Batch size")
 parser.add_argument("--NUM_COND_INPUTS", type=int, default=0, help="Number of conditional inputs")
 parser.add_argument("--TRANSFORMS", type=int, default=3, help="Number of transforms ")
 parser.add_argument("--HIDDEN_FEATURES", type=str, default="32,32,32", help="Number of hidden features")
-parser.add_argument("--FREQS", type=int, default=3, help="Number of hidden features")
+parser.add_argument("--FREQS", type=int, default=3, help="Freqs for CNF")
 
 parser.add_argument("--PLOT_EPOCH_INTERVAL", type=int, default=10, help="Interval for plotting during training")
-parser.add_argument("--TRAIN_FLOW", action="store_true", help="Whether to train the flow or just load a pre-trained model   ")
+parser.add_argument("--TRAIN_FLOW", action="store_true", help="Whether to train the flow")
 parser.add_argument("--EVAL_FLOW", action="store_true", help="Whether to evaluate the flow after training")
-parser.add_argument("--NUM_BDTS", type=int, default=5, help="Number of transforms ")
+parser.add_argument("--NUM_BDTS", type=int, default=5, help="For sample evaluation")
 
 args = parser.parse_args()
 
-working_dir = "/pscratch/sd/r/rmastand/muon_collider"
 
 
 # %%
-save_dir = f"{working_dir}/zuko_outputs/{args.ZUKO_ID}/{args.NAME}"
+save_dir = f"{args.WORKING_DIR}/zuko_outputs/{args.ZUKO_ID}/{args.NAME}"
 os.makedirs(save_dir, exist_ok=True)
 wandb.init(
     project="zuko-flows",          # change if you want
@@ -101,7 +101,7 @@ data = []
 context = []
 
 for i, collection in enumerate(collection_list):
-    tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit.npy")
+    tmp_data = np.load(f"npys/nuGun_pT_0_50/{collection}_SimTrackerHit.npy")
     tmp_context = int(i)*np.ones((int(len(tmp_data)*args.TRAINING_FRAC),1))
     context.append(tmp_context)
     data.append(tmp_data[:int(len(tmp_data)*args.TRAINING_FRAC)])
