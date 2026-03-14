@@ -101,7 +101,7 @@ data = []
 context = []
 
 for i, collection in enumerate(collection_list):
-    tmp_data = np.load(f"npys/nuGun_pT_0_50/{collection}_SimTrackerHit.npy")
+    tmp_data = np.load(f"{args.WORKING_DIR}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit.npy")
     tmp_context = int(i)*np.ones((int(len(tmp_data)*args.TRAINING_FRAC),1))
     context.append(tmp_context)
     data.append(tmp_data[:int(len(tmp_data)*args.TRAINING_FRAC)])
