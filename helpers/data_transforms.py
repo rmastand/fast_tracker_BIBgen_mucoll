@@ -27,8 +27,12 @@ def load_in_data(collection_list, features, working_dir, training_frac):
         theta = np.arctan2(data[:, 2], data[:, 1])
         data[:,1] = r
         data[:,2] = theta
+        feature_labels = ["log($E$) [Gev]", "$r$", "$\phi$", "$z$", "$t$ [s]", "context"]
+    else: 
+        feature_labels = ["log($E$) [Gev]", "$x$", "$y$", "$z$", "$t$ [s]", "context"]
 
-    return data, context
+
+    return data, context, feature_labels
 
 
 

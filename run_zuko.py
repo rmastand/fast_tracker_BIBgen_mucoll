@@ -47,7 +47,7 @@ parser.add_argument("--ZUKO_ID", type=str, default="NSF", help="Zuko model ID")
 parser.add_argument("--NAME", type=str, default="", help="Name")
 parser.add_argument("--COLLECTION_LIST", type=str, default="OuterTrackerBarrelCollection")
 parser.add_argument("--WORKING_DIR", default="/pscratch/sd/r/rmastand/muon_collider", type=str, help="Where to store model outputs and plots")
-parser.add_argument("--FEATURES", default="rphi")
+parser.add_argument("--FEATURES", default="xy")
 
 
 parser.add_argument("--SEED", type=int, default=8, help="Random seed")
@@ -92,16 +92,11 @@ np.random.seed(seed)
 collection_list = [x for x in args.COLLECTION_LIST.split(",")]
 print(collection_list)
 
-if args.FEATURES == "xy":
-    feature_labels = ["log($E$) [Gev]", "$x$", "$y$", "$z$", "$t$ [s]", "context"]
-elif args.FEATURES == "rphi":
-    feature_labels = ["log($E$) [Gev]", "$r$", "$\phi$", "$z$", "$t$ [s]", "context"]
-
 log_vars = []
 
 # %%
 
-data, _ = load_in_data(collection_list, args.FEATURES, args.WORKING_DIR, args.TRAINING_FRAC)
+data, _, feature_labels = load_in_data(collection_list, args.FEATURES, args.WORKING_DIR, args.TRAINING_FRAC)
 
 
 bins_dict = {}
@@ -118,7 +113,7 @@ for i in range(data.shape[1]):
 # %%
 
 
-X_preproc = preprocess_data(data, ".", args.ZUKO_ID)
+X_preproc = preprocess_data(data, save_dir, args.ZUKO_ID)
 if args.NUM_COND_INPUTS == 1:
     X_preproc = np.hstack([X_preproc,  context])
 elif args.NUM_COND_INPUTS == 0:
@@ -260,8 +255,8 @@ if args.TRAIN_FLOW:
             
             samples = flow().sample((10000,)).detach().cpu().numpy()
                 
-            loc_data_dict = {"data": inverse_preprocess_data( data_val , ".", args.ZUKO_ID),
-                    "generated": inverse_preprocess_data( samples , ".", args.ZUKO_ID)}
+            loc_data_dict = {"data": inverse_preprocess_data( data_val , save_dir, args.ZUKO_ID),
+                    "generated": inverse_preprocess_data( samples , save_dir, args.ZUKO_ID)}
             plot_hists_1d(loc_data_dict, bins_dict, log_dims=log_vars, labels=feature_labels)
             plt.savefig(f"{save_dir}/hists")
 
@@ -298,35 +293,28 @@ if args.EVAL_FLOW:
         loc_samples = eval_flow().sample((nn,)).detach().cpu().numpy()
         samples_flow.append(loc_samples)
     samples_flow = np.concatenate(samples_flow)
+  
 
-    X_samples = {
-            "flow_samples":samples_flow
-        }
-
-
-
-    # %%
-    for key in X_samples.keys():
-        
-        X_samples[key] = inverse_preprocess_data( X_samples[key] , ".", args.ZUKO_ID)
+    
+    samples_flow = inverse_preprocess_data( samples_flow , save_dir, args.ZUKO_ID)
+    np.save(f"{save_dir}/flow_samples.npy", samples_flow)
 
 
     # %%
 
-    plot_hists_1d({"data":data, **X_samples}, bins_dict, log_dims=log_vars, labels=feature_labels)
+    plot_hists_1d({"data":data, "generated":samples_flow}, bins_dict, log_dims=log_vars, labels=feature_labels)
     plt.savefig(f"{save_dir}/hists_final")
 
 
     # %%
-    for key in X_samples.keys():
-        fig_samp, axes_samp = plot_corner_hist_2d(
-            X_samples[key],
-            feature_labels=feature_labels,
-            bins_dict=bins_dict,
-            log_dims=log_vars,
-            title= key,
-        )
-        plt.savefig(f"{save_dir}/corner_{key}_final")
+    fig_samp, axes_samp = plot_corner_hist_2d(
+        samples_flow,
+        feature_labels=feature_labels,
+        bins_dict=bins_dict,
+        log_dims=log_vars,
+        title= "generated",
+    )
+    plt.savefig(f"{save_dir}/corner_generated_final")
 
 
 
@@ -335,18 +323,17 @@ if args.EVAL_FLOW:
 
     # %%
 
-    for key in X_samples.keys():
-        with open(f"{save_dir}/results.txt", "w") as ofile:
-            ks_dists_samples = get_kl_dist(data, X_samples[key])
-            ks_dists_gaussians = get_kl_dist(np.random.normal(size = data.shape), np.random.normal(size =  X_samples[key].shape))
-            
-                                                    
-            for i, ks_dist in enumerate(ks_dists_samples):
-                ofile.write("Feature {i} KL div: {ks_dist} (for gaussian: {ks_gauss})".format(i=i, ks_dist=ks_dist, ks_gauss=ks_dists_gaussians[i]))
-                ofile.write("\n")
-            
-            auc_mean, auc_std, best_epoch, max_epochs = discriminate_data_from_samples(data,  X_samples[key], n_runs=args.NUM_BDTS, bdt_config="configs/bdt.yml")
-            ofile.write(f"auc {auc_mean} \pm {auc_std}. best epoch {best_epoch} of {max_epochs}.\n")
+    with open(f"{save_dir}/results.txt", "w") as ofile:
+        ks_dists_samples = get_kl_dist(data, samples_flow)
+        ks_dists_gaussians = get_kl_dist(np.random.normal(size = data.shape), np.random.normal(size =  samples_flow.shape))
+        
+                                                
+        for i, ks_dist in enumerate(ks_dists_samples):
+            ofile.write("Feature {i} KL div: {ks_dist} (for gaussian: {ks_gauss})".format(i=i, ks_dist=ks_dist, ks_gauss=ks_dists_gaussians[i]))
+            ofile.write("\n")
+        
+        auc_mean, auc_std, best_epoch, max_epochs = discriminate_data_from_samples(data,  samples_flow, n_runs=args.NUM_BDTS, bdt_config="configs/bdt.yml")
+        ofile.write(f"auc {auc_mean} \pm {auc_std}. best epoch {best_epoch} of {max_epochs}.\n")
 
     wandb.log({
         "auc_mean": auc_mean,
