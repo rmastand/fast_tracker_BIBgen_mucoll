@@ -325,16 +325,26 @@ def get_delta_R_neighbors(data_array, R, NN):
 
     
 @njit
-def get_delta_R_neighbors_numba_exact(data_array, R):
+def get_delta_R_neighbors_numba_exact(data_array, R, features):
     # Extract coordinates
-    x = data_array[:, 1]
-    y = data_array[:, 2]
-    z = data_array[:, 3]
 
-    # Convert to eta, phi
-    phi = np.arctan2(y, x)
-    rT = np.sqrt(x**2 + y**2)
-    eta = np.arcsinh(z / rT)
+    if features == "xy":
+        x = data_array[:, 1]
+        y = data_array[:, 2]
+        z = data_array[:, 3]
+    
+        # Convert to eta, phi
+        phi = np.arctan2(y, x)
+        rT = np.sqrt(x**2 + y**2)
+        eta = np.arcsinh(z / rT)
+
+    elif features == "rphi":
+        r = data_array[:, 1]
+        phi = data_array[:, 2]
+        z = data_array[:, 3]
+    
+        # Convert to eta, phi
+        eta = np.arcsinh(z / r)
 
     N = len(eta)
 
