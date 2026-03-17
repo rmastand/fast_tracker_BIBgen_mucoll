@@ -43,10 +43,10 @@ NUM_BDTS = 10
 
 
 ZUKO_ID = "NCSF"
-NAME = "VBC_S_2048"
+NAME = "OTBC_S_2048"
 BATCH_SIZE = 512
 NUM_COND_INPUTS = 0
-COLLECTION_NAME = "VertexBarrelCollection"
+COLLECTION_NAME = "OuterTrackerBarrelCollection"
 SEED = 8
 
 EVALUATE_SAMPLES = False
@@ -305,7 +305,7 @@ if EVALUATE_SAMPLES:
 
 # %%
 
-np.save(f"{working_dir}/npys/flow_samples/{COLLECTION_NAME}_{ZUKO_ID}_{NAME}.npy", X_samples["flow_samples"] )
+np.save(f"{working_dir}/npys/flow_samples/{COLLECTION_NAME}_{ZUKO_ID}_{NAME}.npy", X_samples["flow_samples"][m] )
 
 
 
