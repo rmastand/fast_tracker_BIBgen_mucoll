@@ -237,13 +237,15 @@ def run_eval_suite(data, samples, R_values):
     auc_mean, auc_std, best_epoch_list, max_epochs, bdt_list, samples_test, loc_scores = discriminate_data_from_samples(
                                             data,
                                             samples,
-                                            1,
-                                            "configs/dnn.yml",
-                                            model_type="dnn",
+                                            3,
+                                            "configs/bdt.yml",
+                                            model_type="bdt",
                                             plot_losses=True,
                                             device="cuda",
                                             val_size = 0.25, 
                                         )
+
+    print(f"auc {auc_mean} \pm {auc_std}. best epoch {best_epoch_list} of {max_epochs}.\n")
 
     
     plt.figure()
@@ -284,7 +286,7 @@ def run_eval_suite(data, samples, R_values):
 
 
 # %%
-N = 100_000
+N = 50_000
 
 indices = np.random.choice(data.shape[0], size=N, replace=False)
 indices_mask = np.random.choice(sum(mask_flow), size=N, replace=False)

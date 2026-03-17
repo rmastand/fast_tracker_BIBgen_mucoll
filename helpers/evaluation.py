@@ -227,7 +227,9 @@ def discriminate_data_from_samples(
                 loc_scores = model(torch.tensor(X_val, dtype=torch.float32, device=device)).cpu().numpy().flatten()
 
         auc = roc_auc_score(Y_val, loc_scores)
-        print(f"   auc={auc:.4f}")
+        #print(f"   auc={auc:.4f}")
+
+        
 
         auc_list.append(auc)
         best_epoch_list.append(best_epoch)
@@ -252,13 +254,16 @@ def discriminate_data_from_samples(
         else config_dict["dnn_hyperparameters"]["epochs"]
     )
 
+    if model_type.lower() == "dnn":
+        samples_val = scaler.inverse_transform(samples_val)
+
     return (
         np.mean(auc_list),
         np.std(auc_list),
         best_epoch_list,
         n_epochs_or_estimators,
         model_list,
-        scaler.inverse_transform(samples_val),  # unpreprocessed tensor for DNN
+        samples_val,  # unpreprocessed tensor for DNN
         loc_scores
     )
 
