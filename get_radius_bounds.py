@@ -36,14 +36,6 @@ from helpers.plotting import plot_hists_1d, plot_corner_hist_2d
 BIN_BOUND = 5
 NUM_BINS = 100
 NUM_FEATURES = 5
-NUM_BDTS = 10
-
-
-ZUKO_ID = "NSF"
-NAME = "L_2048"
-BATCH_SIZE = 512
-NUM_COND_INPUTS = 0
-SEED = 8
 
 
 
@@ -52,7 +44,7 @@ working_dir = "/pscratch/sd/r/rmastand/muon_collider"
 
 # %%
 
-feature_labels = ["log($E$) [Gev]", "$r$", "$\phi$", "$z$", "$t$ [s]", "context"]
+feature_labels = ["log($E$) [Gev]", "$x$", "$y$", "$z$", "$t$ [s]", "context"]
 log_vars = []
 
 
@@ -61,7 +53,7 @@ log_vars = []
 data_dict = {}
 
 for col_name in ["OuterTrackerBarrelCollection", "InnerTrackerBarrelCollection", "VertexBarrelCollection"]:
-    data_dict[col_name] = load_in_data([col_name], "rphi", working_dir, 0.1)[0]
+    data_dict[col_name] = load_in_data([col_name], "xy", working_dir, 0.1)[0]
         
 
 bins_dict = {
@@ -137,5 +129,113 @@ with open("mask_definitions.pkl", "wb") as ofile:
 # %%
 
 # %%
+
+# %%
+import numpy as np
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+
+
+
+def get_delta_R_neighbors(data_array, R, NN):
+
+    x = data_array[:NN,1]
+    y = data_array[:NN,2]
+    z = data_array[:NN,3]
+
+    # convert to eta, phi
+    phi = np.arctan2(y, x)
+    rT = np.sqrt(x**2 + y**2)
+    eta = np.arcsinh(z / rT)
+
+    N = len(eta)
+
+    print(col_name)
+    print("N =", N)
+
+    # bin size ~ ΔR
+    deta = 2*R
+    dphi = 2*R
+
+    eta_min = eta.min()
+    phi_min = -np.pi
+
+    eta_bin = np.floor((eta - eta_min) / deta).astype(int)
+    phi_bin = np.floor((phi - phi_min) / dphi).astype(int)
+
+    # build grid
+    grid = {}
+    for i in range(N):
+        key = (eta_bin[i], phi_bin[i])
+        if key not in grid:
+            grid[key] = []
+        grid[key].append(i)
+
+    neighbor_counts = np.zeros(N, dtype=int)
+
+    # search neighboring bins
+    for i in tqdm(range(N)):
+
+        eb = eta_bin[i]
+        pb = phi_bin[i]
+
+        for de in [-1,0,1]:
+            for dp in [-1,0,1]:
+
+                key = (eb+de, pb+dp)
+
+                if key not in grid:
+                    continue
+
+                for j in grid[key]:
+
+                    if j == i:
+                        continue
+
+                    d_eta = eta[j] - eta[i]
+
+                    d_phi = phi[j] - phi[i]
+                    d_phi = (d_phi + np.pi) % (2*np.pi) - np.pi
+
+                    dR = np.sqrt(d_eta**2 + d_phi**2)
+
+                    if dR < r:
+                        neighbor_counts[i] += 1
+
+    return neighbor_counts
+
+
+
+# %%
+paths = {
+"OuterTrackerBarrelCollection":"/pscratch/sd/r/rmastand/muon_collider/npys/flow_samples/OuterTrackerBarrelCollection_NCSF_OTBC_S_2048.npy",
+    "InnerTrackerBarrelCollection":"/pscratch/sd/r/rmastand/muon_collider/npys/flow_samples/InnerTrackerBarrelCollection_NCSF_ITBC_S_2048.npy",
+    "VertexBarrelCollection":"/pscratch/sd/r/rmastand/muon_collider/npys/flow_samples/VertexBarrelCollection_NCSF_VBC_S_2048.npy",
+}
+for col_name in data_dict.keys():
+
+    neighbor_counts_data = get_delta_R_neighbors(data_dict[col_name], 0.1, 100000)
+
+
+    a = np.load(paths[col_name])
+    neighbor_counts_flow = get_delta_R_neighbors(a, 0.1, 100000)
+
+    max_val0 = np.max(neighbor_counts_data)
+    max_val1 = np.max(neighbor_counts_flow)
+    max_val = np.max([max_val0, max_val1])
+
+
+    plt.figure()
+    plt.hist(neighbor_counts_data, bins=np.arange(0, max_val, 1), histtype = "step", label = "data")
+    plt.hist(neighbor_counts_flow, bins=np.arange(0, max_val, 1), histtype = "step", label = "flow")
+    plt.legend()
+    plt.xlabel("Number of neighbors within ΔR < 0.1")
+    plt.ylabel("Count")
+    plt.title(col_name)
+    plt.show()
+
+# %%
+
+            
 
 # %%
