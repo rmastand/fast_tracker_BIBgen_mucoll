@@ -26,7 +26,7 @@ from numba import cuda
 import wandb
 import zuko
 from helpers.models.DNN import count_parameters
-from helpers.data_transforms import preprocess_data, inverse_preprocess_data
+from helpers.data_transforms import preprocess_data, inverse_preprocess_data, load_in_data
 from helpers.evaluation import get_kl_dist, discriminate_data_from_samples
 
 plt.style.use("../science.mplstyle")
@@ -47,6 +47,7 @@ parser.add_argument("--ZUKO_ID", type=str, default="NSF", help="Zuko model ID")
 parser.add_argument("--NAME", type=str, default="", help="Name")
 parser.add_argument("--COLLECTION_LIST", type=str, default="OuterTrackerBarrelCollection")
 parser.add_argument("--WORKING_DIR", default="/pscratch/sd/r/rmastand/muon_collider", type=str, help="Where to store model outputs and plots")
+parser.add_argument("--FEATURES", default="rphi")
 
 
 parser.add_argument("--SEED", type=int, default=8, help="Random seed")
@@ -91,25 +92,17 @@ np.random.seed(seed)
 collection_list = [x for x in args.COLLECTION_LIST.split(",")]
 print(collection_list)
 
+if args.FEATURES == "xy":
+    feature_labels = ["log($E$) [Gev]", "$x$", "$y$", "$z$", "$t$ [s]", "context"]
+elif args.FEATURES == "rphi":
+    feature_labels = ["log($E$) [Gev]", "$r$", "$\phi$", "$z$", "$t$ [s]", "context"]
 
-feature_labels = ["log($E$) [Gev]", "$x$", "$y$", "$z$", "$t$ [s]", "context"]
 log_vars = []
 
 # %%
 
-data = []
-context = []
+data, _ = load_in_data(collection_list, args.FEATURES, args.WORKING_DIR, args.TRAINING_FRAC)
 
-for i, collection in enumerate(collection_list):
-    tmp_data = np.load(f"{args.WORKING_DIR}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit.npy")
-    tmp_context = int(i)*np.ones((int(len(tmp_data)*args.TRAINING_FRAC),1))
-    context.append(tmp_context)
-    data.append(tmp_data[:int(len(tmp_data)*args.TRAINING_FRAC)])
-    
-
-data = np.vstack(data)[:,[0,2,3,4,5]]
-data[:,0] = np.log(data[:,0])
-context = np.vstack(context)
 
 bins_dict = {}
 bins_dict_preproc = {i:np.linspace(-BIN_BOUND, BIN_BOUND, NUM_BINS) for i in range(data.shape[1])}

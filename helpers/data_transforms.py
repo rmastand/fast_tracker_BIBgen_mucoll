@@ -3,6 +3,35 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import pickle
 
 epsilon = 1e-12
+
+
+def load_in_data(collection_list, features, working_dir, training_frac):
+        
+    data = []
+    context = []
+    
+    for i, collection in enumerate(collection_list):
+        tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit.npy")
+        tmp_context = int(i)*np.ones((int(len(tmp_data)*training_frac),1))
+        context.append(tmp_context)
+        data.append(tmp_data[:int(len(tmp_data)*training_frac)])
+
+        
+    
+    data = np.vstack(data)[:,[0,2,3,4,5]]
+    data[:,0] = np.log(data[:,0])
+    context = np.vstack(context)
+
+    if features == "rphi":
+        r = np.sqrt(data[:, 1]**2 + data[:, 2]**2)
+        theta = np.arctan2(data[:, 2], data[:, 1])
+        data[:,1] = r
+        data[:,2] = theta
+
+    return data, context
+
+
+
 def logit_transform(x, all_min, all_max, cushion ):
     
     x_norm = (x-all_min)/(all_max-all_min)

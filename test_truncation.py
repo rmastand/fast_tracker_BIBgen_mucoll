@@ -24,7 +24,7 @@ import argparse
 import yaml
 from numba import cuda
 import zuko
-from helpers.data_transforms import preprocess_data, inverse_preprocess_data
+from helpers.data_transforms import preprocess_data, inverse_preprocess_data, load_in_data
 
 from helpers.models.DNN import count_parameters
 from helpers.evaluation import get_kl_dist, discriminate_data_from_samples
@@ -36,21 +36,20 @@ plt.style.use("../science.mplstyle")
 from helpers.plotting import plot_hists_1d, plot_corner_hist_2d
 
 # %%
-
-
 BIN_BOUND = 5
 NUM_BINS = 100
 NUM_FEATURES = 5
 NUM_BDTS = 10
 
 
-ZUKO_ID = "NSF"
-NAME = "L_2048"
+ZUKO_ID = "NCSF"
+NAME = "VBC_S_2048"
 BATCH_SIZE = 512
 NUM_COND_INPUTS = 0
-COLLECTION_NAME = "OuterTrackerBarrelCollection"
+COLLECTION_NAME = "VertexBarrelCollection"
 SEED = 8
 
+EVALUATE_SAMPLES = False
 
 
 working_dir = "/pscratch/sd/r/rmastand/muon_collider"
@@ -79,18 +78,8 @@ feature_labels = ["log($E$) [Gev]", "$x$", "$y$", "$z$", "$t$ [s]", "context"]
 log_vars = []
 
 # %%
-
-data = []
-context = []
-
-
-tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{COLLECTION_NAME}_SimTrackerHit.npy")
-data.append(tmp_data[:int(len(tmp_data)*.1)])
-
-
-data = np.vstack(data)[:,[0,2,3,4,5]]
-#data = data[data[:,0] > 2e-6]
-data[:,0] = np.log(data[:,0])
+data = load_in_data([COLLECTION_NAME], "xy", working_dir, 0.1)[0]
+        
 
 bins_dict = {}
 bins_dict_preproc = {i:np.linspace(-BIN_BOUND, BIN_BOUND, NUM_BINS) for i in range(data.shape[1])}
@@ -99,7 +88,7 @@ for i in range(data.shape[1]):
     if i in log_vars:
         bins_dict[i] = np.logspace(np.log10(0.9*np.min(data[:,i])), np.log10(1.1*np.max(data[:,i])), NUM_BINS) 
     else:
-        bins_dict[i] = np.linspace(np.min(data[:,i] - 3), np.max(data[:,i] + 3), NUM_BINS) 
+        bins_dict[i] = np.linspace(np.min(data[:,i] - 5), np.max(data[:,i] + 5), NUM_BINS) 
 
 # %%
 
@@ -208,55 +197,42 @@ for key in X_samples.keys():
 # https://github.com/key4hep/k4geo/blob/main/MuColl/MAIA/compact/MAIA_v0/OuterTracker_o2_v06_01.xml
 
 
-def get_x_y_mask(X, layer_radii=(819, 1153, 1486), thickness=15):
-    layer_radii = np.asarray(layer_radii)   # convert list → numpy array
-    half_t = thickness / 2
 
-    r = np.sqrt(X[:,1]**2 + X[:,2]**2)
+def make_mask(r):
 
-    mask = np.any(
-        np.abs(r[:, None] - layer_radii[None, :]) <= half_t,
-        axis=1
-    )
+    with open("mask_definitions.pkl", "rb") as ifile:
+        mask_definitions = pickle.load(ifile)
+
+    mask = []
+    for i in range(len(mask_definitions[COLLECTION_NAME]["lower_bounds"])):
+       
+
+        tmp = (
+            (r >= mask_definitions[COLLECTION_NAME]["lower_bounds"][i]) &
+            (r <= mask_definitions[COLLECTION_NAME]["upper_bounds"][i])
+        )
+
+        mask.append(tmp.reshape(-1,1))
+
+    mask = np.any(np.hstack(mask), axis=1)
+
     return mask
 
+m = make_mask(np.sqrt(data[:,1]**2+data[:,2]**2))
 
-m = get_x_y_mask(data)
-print("Num. hits before mask:", len(m))
-print("Num. hits after mask:", sum(m))
+plot_hists_1d({"data":data, "mask":data[m]}, bins_dict, log_dims=log_vars, labels=feature_labels)
 
-
-plt.figure(figsize = (5,5))
-plt.hist2d(data[:,1], data[:,2], bins = [np.linspace(-1500,1500,500), np.linspace(-1500,1500,500)])
-plt.show()
-
-
-plt.figure(figsize = (5,5))
-plt.hist2d(data[m][:,1], data[m][:,2], bins = [np.linspace(-1500,1500,500), np.linspace(-1500,1500,500)])
-plt.show()
 
 
 # %%
-m = get_x_y_mask(X_samples["flow_samples"])
-print("Num. hits before mask:", len(m))
-print("Num. hits after mask:", sum(m))
+m = make_mask(np.sqrt(X_samples["flow_samples"][:,1]**2+X_samples["flow_samples"][:,2]**2))
+print(len(m), sum(m), sum(m)/len(m))
 
-
-
-plt.figure(figsize = (5,5))
-plt.hist2d(X_samples["flow_samples"][:,1], X_samples["flow_samples"][:,2], bins = [np.linspace(-1500,1500,500), np.linspace(-1500,1500,500)])
-plt.show()
-
-
-plt.figure(figsize = (5,5))
-plt.hist2d(X_samples["flow_samples"][m][:,1], X_samples["flow_samples"][m][:,2], bins = [np.linspace(-1500,1500,500), np.linspace(-1500,1500,500)])
-plt.show()
-
+plot_hists_1d({"samples":X_samples["flow_samples"], "mask":X_samples["flow_samples"][m]}, bins_dict, log_dims=log_vars, labels=feature_labels)
 
 
 # %%
 print(ZUKO_ID, NAME)
-plot_hists_1d({"data":data, **X_samples, "truncated":X_samples["flow_samples"][m]}, bins_dict, log_dims=log_vars, labels=feature_labels)
 
 
 fig_samp, axes_samp = plot_corner_hist_2d(
@@ -268,73 +244,71 @@ fig_samp, axes_samp = plot_corner_hist_2d(
     )
 
 # %%
-ks_dists_samples = get_kl_dist(data, X_samples["flow_samples"])
-ks_dists_gaussians = get_kl_dist(np.random.normal(size = data.shape), np.random.normal(size =  X_samples["flow_samples"].shape))
+if EVALUATE_SAMPLES:
+    ks_dists_samples = get_kl_dist(data, X_samples["flow_samples"])
+    ks_dists_gaussians = get_kl_dist(np.random.normal(size = data.shape), np.random.normal(size =  X_samples["flow_samples"].shape))
+    
+                                            
+    for i, ks_dist in enumerate(ks_dists_samples):
+        print("Feature {i} KL div: {ks_dist} (for gaussian: {ks_gauss})".format(i=i, ks_dist=ks_dist, ks_gauss=ks_dists_gaussians[i]))
+    
+    auc_mean, auc_std, best_epoch_list, max_epochs, bdt_list = discriminate_data_from_samples(data,  X_samples["flow_samples"], n_runs=NUM_BDTS, bdt_config="configs/bdt.yml")
+    print(f"auc {auc_mean} \pm {auc_std}. best epoch {best_epoch_list} of {max_epochs}.\n")
+    
 
-                                        
-for i, ks_dist in enumerate(ks_dists_samples):
-    print("Feature {i} KL div: {ks_dist} (for gaussian: {ks_gauss})".format(i=i, ks_dist=ks_dist, ks_gauss=ks_dists_gaussians[i]))
 
-auc_mean, auc_std, best_epoch_list, max_epochs, bdt_list = discriminate_data_from_samples(data,  X_samples["flow_samples"], n_runs=NUM_BDTS, bdt_config="configs/bdt.yml")
-print(f"auc {auc_mean} \pm {auc_std}. best epoch {best_epoch_list} of {max_epochs}.\n")
+# %%
+if EVALUATE_SAMPLES:
+    loc_scores = []
+    for i, bdt_i in enumerate(bdt_list):
+    
+        loc_scores.append(bdt_i.predict_proba(
+                X_samples["flow_samples"], iteration_range=(0, best_epoch_list[i])
+            )[:, 0].reshape(-1, 1))
+    
+    loc_scores = np.mean(np.concatenate(loc_scores, axis = 1), axis = 1)
+                        
+    
+    plt.figure()
+    plt.hist(loc_scores, bins = np.linspace(0, 1, 100), histtype = "step", density = True)
+    plt.xlabel("scores")
+    plt.ylabel("Density")
+    plt.show()
+    
+    
+    X_plot = {"samples":  X_samples["flow_samples"]}
+    
+    percentiles = [50, 90, 99]
+    
+    for p in percentiles:
+        X_plot[f"samples, top {p}%"] =  X_samples["flow_samples"][loc_scores >= np.percentile(loc_scores, p)]
+    
+    
+    
+    plot_hists_1d({"data":data, **X_plot}, bins_dict, log_dims=log_vars, labels=feature_labels)
+    
+    
 
+
+# %%
+if EVALUATE_SAMPLES:
+    ks_dists_samples = get_kl_dist(data, X_samples["flow_samples"][m])
+    ks_dists_gaussians = get_kl_dist(np.random.normal(size = data.shape), np.random.normal(size =  X_samples["flow_samples"][m].shape))
+    
+                                            
+    for i, ks_dist in enumerate(ks_dists_samples):
+        print("Feature {i} KL div: {ks_dist} (for gaussian: {ks_gauss})".format(i=i, ks_dist=ks_dist, ks_gauss=ks_dists_gaussians[i]))
+    
+    auc_mean, auc_std, best_epoch, max_epochs = discriminate_data_from_samples(data,  X_samples["flow_samples"][m], n_runs=NUM_BDTS, bdt_config="configs/bdt.yml")
+    print(f"auc {auc_mean} \pm {auc_std}. best epoch {best_epoch} of {max_epochs}.\n")
 
 
 # %%
 
-loc_scores = []
-for i, bdt_i in enumerate(bdt_list):
-
-    loc_scores.append(bdt_i.predict_proba(
-            X_samples["flow_samples"], iteration_range=(0, best_epoch_list[i])
-        )[:, 0].reshape(-1, 1))
-
-loc_scores = np.mean(np.concatenate(loc_scores, axis = 1), axis = 1)
-                    
-
-plt.figure()
-plt.hist(loc_scores, bins = np.linspace(0, 1, 100), histtype = "step", density = True)
-plt.xlabel("scores")
-plt.ylabel("Density")
-plt.show()
-
-
-X_plot = {"samples":  X_samples["flow_samples"]}
-
-percentiles = [50, 90, 99]
-
-for p in percentiles:
-    X_plot[f"samples, top {p}%"] =  X_samples["flow_samples"][loc_scores >= np.percentile(loc_scores, p)]
+np.save(f"{working_dir}/npys/flow_samples/{COLLECTION_NAME}_{ZUKO_ID}_{NAME}.npy", X_samples["flow_samples"] )
 
 
 
-plot_hists_1d({"data":data, **X_plot}, bins_dict, log_dims=log_vars, labels=feature_labels)
-
-
-
-
-# %%
-ks_dists_samples = get_kl_dist(data, X_samples["flow_samples"][m])
-ks_dists_gaussians = get_kl_dist(np.random.normal(size = data.shape), np.random.normal(size =  X_samples["flow_samples"][m].shape))
-
-                                        
-for i, ks_dist in enumerate(ks_dists_samples):
-    print("Feature {i} KL div: {ks_dist} (for gaussian: {ks_gauss})".format(i=i, ks_dist=ks_dist, ks_gauss=ks_dists_gaussians[i]))
-
-auc_mean, auc_std, best_epoch, max_epochs = discriminate_data_from_samples(data,  X_samples["flow_samples"][m], n_runs=NUM_BDTS, bdt_config="configs/bdt.yml")
-print(f"auc {auc_mean} \pm {auc_std}. best epoch {best_epoch} of {max_epochs}.\n")
-
-
-# %%
-
-# save out
-print(X_samples["flow_samples"])
-print(X_samples["flow_samples"].shape)
-
-
-# %%
-
-np.save(X_samples["flow_samples"], f"{working_dir}/npys/flow_samples/{COLLECTION_NAME}_{ZUKO_ID}_{NAME}")
 
 # %%
 
