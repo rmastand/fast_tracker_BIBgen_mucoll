@@ -1,5 +1,5 @@
 bdt_hyperparameters:
-    n_estimators: 300 # number of boosting stages
+    n_estimators: 1000 # number of boosting stages
     max_depth: 3 # max depth of individual regression estimators; related to complexity
     learning_rate: 0.1  # stop training BDT is validation loss doesn't improve after this many rounds
     subsample: 0.7   # fraction of samples to be used for fitting the individual base learners

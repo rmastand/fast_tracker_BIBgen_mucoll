@@ -72,7 +72,8 @@ def discriminate_data_from_samples(
     plot_losses=False,
     device=None,
     val_size=0.3,
-    subsample_frac=None  # optional subsample for large datasets
+    subsample_frac=None,  # optional subsample for large datasets,
+    plot_dir=None
 ):
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -97,6 +98,8 @@ def discriminate_data_from_samples(
         idx_samples = np.random.choice(samples.shape[0], n_samples, replace=False)
         data = data[idx_data]
         samples = samples[idx_samples]
+
+    print(data.shape, samples.shape)
 
     # ======================
     # Split data
@@ -150,7 +153,9 @@ def discriminate_data_from_samples(
                 plt.ylabel("Logloss")
                 plt.title(f"BDT Run {i+1} Logloss")
                 plt.legend()
+                plt.savefig(f"{plot_dir}/losses_{i}.png")
                 plt.show()
+                plt.close()
 
         elif model_type.lower() == "dnn":
             dnn_params = config_dict["dnn_hyperparameters"]
@@ -214,7 +219,9 @@ def discriminate_data_from_samples(
                 plt.ylabel("Loss")
                 plt.title(f"DNN Run {i+1} Losses (Best epoch {best_epoch})")
                 plt.legend()
+                plt.savefig(f"{plot_dir}/losses_{i}.png")
                 plt.show()
+                plt.close()
 
         else:
             raise ValueError("model_type must be 'bdt' or 'dnn'")
@@ -426,7 +433,7 @@ def get_delta_R_neighbors_numba_exact(data_array, R, features):
 import numpy as np
 from scipy.spatial import cKDTree
 
-def get_delta_R_neighbors_kdtree(data_array, R):
+def get_delta_R_neighbors_kdtree(data_array, R, features):
     """
     Compute the number of neighbors within ΔR for each point
     using scipy's cKDTree (much faster for large R or dense datasets).
@@ -445,15 +452,23 @@ def get_delta_R_neighbors_kdtree(data_array, R):
     neighbor_counts : np.ndarray
         Array of length NN with neighbor counts for each point.
     """
-    # Extract coordinates
-    x = data_array[:, 1]
-    y = data_array[:, 2]
-    z = data_array[:, 3]
+    if features == "xy":
+        x = data_array[:, 1]
+        y = data_array[:, 2]
+        z = data_array[:, 3]
+    
+        # Convert to eta, phi
+        phi = np.arctan2(y, x)
+        rT = np.sqrt(x**2 + y**2)
+        eta = np.arcsinh(z / rT)
 
-    # Convert to eta, phi
-    rT = np.sqrt(x**2 + y**2)
-    eta = np.arcsinh(z / rT)
-    phi = np.arctan2(y, x)
+    elif features == "rphi":
+        r = data_array[:, 1]
+        phi = data_array[:, 2]
+        z = data_array[:, 3]
+    
+        # Convert to eta, phi
+        eta = np.arcsinh(z / r)
 
     # Combine coordinates
     points = np.vstack([eta, phi]).T

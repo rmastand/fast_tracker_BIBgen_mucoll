@@ -18,7 +18,7 @@ def load_in_data(collection_list, features, working_dir, training_frac):
 
         
     
-    data = np.vstack(data)[:,[0,2,3,4,5]]
+    data = np.vstack(data)
     data[:,0] = np.log(data[:,0])
     context = np.vstack(context)
 

@@ -8,9 +8,9 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.16.4
 #   kernelspec:
-#     display_name: Python (VSCode)
+#     display_name: Python (muon_collider_env)
 #     language: python
-#     name: vs_env
+#     name: muon_collider_env
 # ---
 
 # %%
@@ -123,6 +123,11 @@ with open("mask_definitions.pkl", "wb") as ofile:
 # %%
 
 # %%
+for col_name in data_dict.keys():
+    plt.figure(figsize = (12, 12))
+    plt.scatter(data_dict[col_name][:,1], data_dict[col_name][:,2], s = 0.0001)
+    plt.title(col_name)
+    plt.show()
 
 # %%
 

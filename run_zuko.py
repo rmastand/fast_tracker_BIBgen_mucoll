@@ -22,7 +22,7 @@ import os
 import torch
 import argparse
 import yaml
-from numba import cuda
+#from numba import cuda
 import wandb
 import zuko
 from helpers.models.DNN import count_parameters
@@ -52,7 +52,7 @@ parser.add_argument("--FEATURES", default="xy")
 
 parser.add_argument("--SEED", type=int, default=8, help="Random seed")
 parser.add_argument("--NUM_EPOCHS", type=int, default=5, help="Number of training epochs")
-parser.add_argument("--LEARNING_RATE", type=float, default=1e-3, help="Learning rate")
+parser.add_argument("--LEARNING_RATE", type=float, default=1e-4, help="Learning rate")
 parser.add_argument("--TRAINING_FRAC", type=float, default=0.5, help="How much training data to use")
 parser.add_argument("--BATCH_SIZE", type=int, default=512, help="Batch size")
 parser.add_argument("--NUM_COND_INPUTS", type=int, default=0, help="Number of conditional inputs")
@@ -332,17 +332,30 @@ if args.EVAL_FLOW:
             ofile.write("Feature {i} KL div: {ks_dist} (for gaussian: {ks_gauss})".format(i=i, ks_dist=ks_dist, ks_gauss=ks_dists_gaussians[i]))
             ofile.write("\n")
         
-        auc_mean, auc_std, best_epoch, max_epochs = discriminate_data_from_samples(data,  samples_flow, n_runs=args.NUM_BDTS, bdt_config="configs/bdt.yml")
-        ofile.write(f"auc {auc_mean} \pm {auc_std}. best epoch {best_epoch} of {max_epochs}.\n")
+        auc_mean, auc_std, best_epoch_list, max_epochs, _, _, _ = discriminate_data_from_samples(
+            data,
+            samples_flow,
+            args.NUM_BDTS,
+            "configs/bdt.yml",
+            model_type="bdt",
+            plot_losses=True,
+            device=device,
+            val_size=0.2,
+            subsample_frac=0.25,  # optional subsample for large datasets,
+            plot_dir=save_dir
+        )
+        
+        ofile.write(f"auc {auc_mean} pm {auc_std}. best epoch {best_epoch_list} of {max_epochs}.\n")
 
     wandb.log({
         "auc_mean": auc_mean,
         "auc_std": auc_std,
-        "bdt_best_epoch": best_epoch
+        "bdt_best_epoch": np.mean(best_epoch_list)
             })
         
     wandb.run.summary["auc_mean"] = auc_mean
     wandb.run.summary["auc_std"] = auc_std
+
 
 wandb.finish()
     # %%

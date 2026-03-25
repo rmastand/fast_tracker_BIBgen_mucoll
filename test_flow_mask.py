@@ -8,9 +8,9 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.16.4
 #   kernelspec:
-#     display_name: Python (VSCode)
+#     display_name: Python (muon_collider_env)
 #     language: python
-#     name: vs_env
+#     name: muon_collider_env
 # ---
 
 # %%
@@ -25,12 +25,10 @@ from helpers.data_transforms import preprocess_data, inverse_preprocess_data, lo
 
 from helpers.models.DNN import count_parameters
 from helpers.evaluation import get_kl_dist, discriminate_data_from_samples, get_wasserstein_dist, get_delta_R_neighbors_numba_exact, get_delta_R_neighbors_kdtree
+from helpers.plotting import plot_hists_1d, plot_corner_hist_2d
+
 
 plt.style.use("../science.mplstyle")
-
-
-# %%
-from helpers.plotting import plot_hists_1d, plot_corner_hist_2d
 
 # %%
 BIN_BOUND = 5
@@ -40,10 +38,9 @@ NUM_BDTS = 10
 
 
 ZUKO_ID = "NCSF"
-NAME = "OTBC_S_2048"
-BATCH_SIZE = 512
+NAME = "VBC_M_4096_rphi"
 NUM_COND_INPUTS = 0
-COLLECTION_NAME = "OuterTrackerBarrelCollection"
+COLLECTION_NAME = "VertexBarrelCollection"
 SEED = 8
 
 EVALUATE_SAMPLES = False
@@ -52,8 +49,6 @@ FEATURES = "rphi"
 working_dir = "/pscratch/sd/r/rmastand/muon_collider"
 log_vars = [1]
 
-
-# %%
 save_dir = f"{working_dir}/zuko_outputs/{ZUKO_ID}/{NAME}"
 
 
@@ -62,11 +57,11 @@ save_dir = f"{working_dir}/zuko_outputs/{ZUKO_ID}/{NAME}"
 data, _, feature_labels = load_in_data([COLLECTION_NAME], FEATURES, working_dir, 0.5)
 flow_samples = np.load(f"{save_dir}/flow_samples.npy")
 
-if FEATURES == "rphi":
-    r = np.sqrt(flow_samples[:, 1]**2 + flow_samples[:, 2]**2)
-    theta = np.arctan2(flow_samples[:, 2], flow_samples[:, 1])
-    flow_samples[:,1] = r
-    flow_samples[:,2] = theta
+# if FEATURES == "rphi":
+#     r = np.sqrt(flow_samples[:, 1]**2 + flow_samples[:, 2]**2)
+#     theta = np.arctan2(flow_samples[:, 2], flow_samples[:, 1])
+#     flow_samples[:,1] = r
+#     flow_samples[:,2] = theta
 
 bins_dict = {}
 bins_dict_preproc = {i:np.linspace(-BIN_BOUND, BIN_BOUND, NUM_BINS) for i in range(data.shape[1])}
@@ -77,8 +72,8 @@ for i in range(data.shape[1]):
     else:
         bins_dict[i] = np.linspace(np.min(data[:,i] - 3), np.max(data[:,i] + 3), NUM_BINS) 
 
-# %%
 
+# %%
 plot_hists_1d({"data":data, "samples": flow_samples}, bins_dict, log_dims=log_vars, labels=feature_labels)
 
 
@@ -91,6 +86,20 @@ except:
 
 
 # %%
+plt.figure(figsize = (15, 15))
+plt.scatter(data[:,1]*np.cos(data[:,2]), data[:,1]*np.sin(data[:,2]), s = 0.001)
+plt.xlim(-130, 130)
+plt.ylim(-130, 130)
+plt.show()
+
+
+plt.figure(figsize = (15, 15))
+plt.scatter(flow_samples[:,1]*np.cos(flow_samples[:,2]), flow_samples[:,1]*np.sin(flow_samples[:,2]), s = 0.001)
+plt.xlim(-130, 130)
+plt.ylim(-130, 130)
+plt.show()
+
+# %%
 fig_samp, axes_samp = plot_corner_hist_2d(
    flow_samples,
     feature_labels=feature_labels,
@@ -100,9 +109,9 @@ fig_samp, axes_samp = plot_corner_hist_2d(
 )
 
 
-
 # %% [markdown]
 # # Restrict layers
+#
 
 # %%
 import pickle
@@ -142,6 +151,7 @@ for col_name in mask_definitions.keys():
         print("   upper bounds:", mask_definitions[col_name][r]["upper_bounds"])
     print()
 
+
 # %%
 if FEATURES == "rphi":
     r_data = data[:,1]
@@ -157,8 +167,8 @@ print("Num. flow samples:",len(mask_flow), "\nNum. flow samples pass mask:", sum
 
 
 plt.figure()
-plt.hist(r_data, bins = np.linspace(0, 1600, 1000), histtype = "step", label = "data")
-plt.hist(r_flow, bins = np.linspace(0, 1600, 1000), histtype = "step", label = "flow")
+plt.hist(r_data, bins = np.linspace(0, 1500, 1000), histtype = "step", label = "data")
+plt.hist(r_flow, bins = np.linspace(0, 1500, 1000), histtype = "step", label = "flow")
 plt.legend()
 plt.yscale("log")
 plt.xlabel("$r$ [mm]")
@@ -190,12 +200,9 @@ for radius in mask_definitions[COLLECTION_NAME].keys():
     plt.ylabel("Density")
     plt.show()
 
-# %%
 
+# %%
 plot_hists_1d({"samples":flow_samples, "masked flow samples":flow_samples[mask_flow]}, bins_dict, log_dims=log_vars, labels=feature_labels)
-
-
-# %%
 
 
 fig_samp, axes_samp = plot_corner_hist_2d(
@@ -215,6 +222,13 @@ fig_samp, axes_samp = plot_corner_hist_2d(
         log_dims=log_vars,
         title= "masked flow samples",
     )
+
+
+# %%
+
+# %%
+
+# %%
 
 # %%
 import torch
@@ -243,6 +257,7 @@ def run_eval_suite(data, samples, R_values):
                                             plot_losses=True,
                                             device="cuda",
                                             val_size = 0.25, 
+        plot_dir = save_dir
                                         )
 
     print(f"auc {auc_mean} \pm {auc_std}. best epoch {best_epoch_list} of {max_epochs}.\n")
@@ -265,8 +280,8 @@ def run_eval_suite(data, samples, R_values):
 
     # Clustering
     for R in R_values:
-        neighbor_counts_data = get_delta_R_neighbors_numba_exact(data, R, FEATURES)
-        neighbor_counts_flow = get_delta_R_neighbors_numba_exact(samples, R, FEATURES)
+        neighbor_counts_data = get_delta_R_neighbors_kdtree(data, R, FEATURES)
+        neighbor_counts_flow = get_delta_R_neighbors_kdtree(samples, R, FEATURES)
     
         max_val0 = np.max(neighbor_counts_data)
         max_val1 = np.max(neighbor_counts_flow)
@@ -282,24 +297,30 @@ def run_eval_suite(data, samples, R_values):
         plt.show()
 
 
-           
-
 
 # %%
-N = 50_000
+N = 100_000
 
 indices = np.random.choice(data.shape[0], size=N, replace=False)
 indices_mask = np.random.choice(sum(mask_flow), size=N, replace=False)
 
 
 
-run_eval_suite(data[indices], flow_samples[indices], [0.1, 0.2, 0.4, 0.6])
+run_eval_suite(data[indices], flow_samples[indices], [0.1, 0.2, 0.4])
+
+
+# %%
+
+           
+
+
+# %%
 
 # %%
 
 
 
-run_eval_suite(data[indices], flow_samples[mask_flow][indices_mask], [0.1, 0.2, 0.4, 0.6])
+run_eval_suite(data[indices], flow_samples[mask_flow][indices_mask], [0.1, 0.2, 0.4])
 
 
 # %%
@@ -307,6 +328,15 @@ run_eval_suite(data[indices], flow_samples[mask_flow][indices_mask], [0.1, 0.2, 
 
 
 # %%
+
+# %%
+
+# %%
+
+# %%
+
+# %%
+
 
 # %%
 
