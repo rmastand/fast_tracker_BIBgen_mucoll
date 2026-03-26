@@ -36,11 +36,19 @@ NUM_BINS = 60
 NUM_FEATURES = 5
 NUM_BDTS = 10
 
+collections = [
+    "InnerTrackerBarrelCollection",
+    "InnerTrackerEndcapCollection",
+    "OuterTrackerBarrelCollection",     
+    "OuterTrackerEndcapCollection",  
+    "VertexBarrelCollection",   
+    "VertexEndcapCollection",
+]
+
 
 ZUKO_ID = "NCSF"
-NAME = "VBC_M_4096_rphi"
+NAME = "M_4096_rphi"
 NUM_COND_INPUTS = 0
-COLLECTION_NAME = "VertexBarrelCollection"
 SEED = 8
 
 EVALUATE_SAMPLES = False
@@ -49,13 +57,23 @@ FEATURES = "rphi"
 working_dir = "/pscratch/sd/r/rmastand/muon_collider"
 log_vars = [1]
 
-save_dir = f"{working_dir}/zuko_outputs/{ZUKO_ID}/{NAME}"
-
 
 
 # %%
-data, _, feature_labels = load_in_data([COLLECTION_NAME], FEATURES, working_dir, 0.5)
-flow_samples = np.load(f"{save_dir}/flow_samples.npy")
+# load in samples
+
+all_data_dir, all_samples_dir = {}, {}
+bins_dict, bins_dict_preproc = {}, {}
+aucs = {}
+
+for col_name in collections:
+    small_id = ''.join([c for c in col_name if c.isupper()])
+    data, _, feature_labels = load_in_data([col_name], FEATURES, working_dir, 0.5)
+    all_data_dir[col_name] = data
+    all_samples_dir[col_name] = np.load(f"{working_dir}/zuko_outputs/{ZUKO_ID}/{small_id}_{NAME}/flow_samples.npy")
+    with open(f"{working_dir}/zuko_outputs/{ZUKO_ID}/{small_id}_{NAME}/results.txt") as ifile:
+        aucs[col_name]=  ifile.readlines()[-1]
+   
 
 # if FEATURES == "rphi":
 #     r = np.sqrt(flow_samples[:, 1]**2 + flow_samples[:, 2]**2)
@@ -63,50 +81,54 @@ flow_samples = np.load(f"{save_dir}/flow_samples.npy")
 #     flow_samples[:,1] = r
 #     flow_samples[:,2] = theta
 
-bins_dict = {}
-bins_dict_preproc = {i:np.linspace(-BIN_BOUND, BIN_BOUND, NUM_BINS) for i in range(data.shape[1])}
-
-for i in range(data.shape[1]):
-    if i in log_vars:
-        bins_dict[i] = np.logspace(np.log10(0.9*np.min(data[:,i])), np.log10(1.1*np.max(data[:,i])), NUM_BINS) 
-    else:
-        bins_dict[i] = np.linspace(np.min(data[:,i] - 3), np.max(data[:,i] + 3), NUM_BINS) 
-
-
-# %%
-plot_hists_1d({"data":data, "samples": flow_samples}, bins_dict, log_dims=log_vars, labels=feature_labels)
-
-
-try:
-    with open(f"{save_dir}/results.txt") as ifile:
-        a = ifile.readlines()[-1]
-        print(a)
-except:
-    pass
+    bins_dict[col_name] = {}
+    bins_dict_preproc[col_name] = {i:np.linspace(-BIN_BOUND, BIN_BOUND, NUM_BINS) for i in range(data.shape[1])}
+    
+    for i in range(data.shape[1]):
+        if i in log_vars:
+            bins_dict[col_name][i] = np.logspace(np.log10(0.9*np.min(data[:,i])), np.log10(1.1*np.max(data[:,i])), NUM_BINS) 
+        else:
+            bins_dict[col_name][i] = np.linspace(np.min(data[:,i] - 3), np.max(data[:,i] + 3), NUM_BINS) 
 
 
 # %%
-plt.figure(figsize = (15, 15))
-plt.scatter(data[:,1]*np.cos(data[:,2]), data[:,1]*np.sin(data[:,2]), s = 0.001)
-plt.xlim(-130, 130)
-plt.ylim(-130, 130)
-plt.show()
-
-
-plt.figure(figsize = (15, 15))
-plt.scatter(flow_samples[:,1]*np.cos(flow_samples[:,2]), flow_samples[:,1]*np.sin(flow_samples[:,2]), s = 0.001)
-plt.xlim(-130, 130)
-plt.ylim(-130, 130)
-plt.show()
+print(aucs)
 
 # %%
-fig_samp, axes_samp = plot_corner_hist_2d(
-   flow_samples,
-    feature_labels=feature_labels,
-    bins_dict=bins_dict,
-    log_dims=log_vars,
-    title= "flow_samples",
-)
+for col_name in collections:
+
+    print(col_name)
+    plot_hists_1d({"data":all_data_dir[col_name], "samples": all_samples_dir[col_name]}, bins_dict[col_name], log_dims=log_vars, labels=feature_labels)
+    plt.savefig(f"figures/{col_name}_1d.png")
+
+    # plot x-y
+    x_lim = np.max(all_data_dir[col_name][:,1])
+    fig, ax = plt.subplots(1, 2, figsize = (20, 10))
+    ax[0].scatter(all_data_dir[col_name][:,1]*np.cos(all_data_dir[col_name][:,2]), all_data_dir[col_name][:,1]*np.sin(all_data_dir[col_name][:,2]), s = 0.00001)
+    ax[0].set_xlim(-x_lim, x_lim)
+    ax[0].set_ylim(-x_lim, x_lim)
+    
+    ax[1].scatter(all_samples_dir[col_name][:,1]*np.cos(all_samples_dir[col_name][:,2]), all_samples_dir[col_name][:,1]*np.sin(all_samples_dir[col_name][:,2]), s = 0.00001)
+    ax[1].set_xlim(-x_lim, x_lim)
+    ax[1].set_ylim(-x_lim, x_lim)
+    plt.show()
+    
+   
+
+
+# %%
+
+# %%
+for col_name in collections:
+    fig_samp, axes_samp = plot_corner_hist_2d(
+       all_samples_dir[col_name],
+        feature_labels=feature_labels,
+        bins_dict=bins_dict[col_name],
+        log_dims=log_vars,
+        title= "flow_samples",
+    )
+    plt.savefig(f"figures/{col_name}_2d.png")
+
 
 
 # %% [markdown]
@@ -236,7 +258,7 @@ import torch
 device = torch.device( "cuda" if torch.cuda.is_available() else "cpu")
 print( "Using device: " + str( device ), flush=True)
 
-def run_eval_suite(data, samples, R_values):
+def run_eval_suite(data, samples, R_values, plot_suffix=""):
 
     print(f"Len data: {len(data)}, len samples: {len(samples)}")
 
@@ -257,7 +279,7 @@ def run_eval_suite(data, samples, R_values):
                                             plot_losses=True,
                                             device="cuda",
                                             val_size = 0.25, 
-        plot_dir = save_dir
+                                            plot_dir="."
                                         )
 
     print(f"auc {auc_mean} \pm {auc_std}. best epoch {best_epoch_list} of {max_epochs}.\n")
@@ -294,19 +316,25 @@ def run_eval_suite(data, samples, R_values):
         plt.legend()
         plt.xlabel(f"# neighbors within $\Delta$R $\leq$ {R}")
         plt.ylabel("Count")
+        plt.savefig(f"figures/deltaR{R}{plot_suffix}.png")
         plt.show()
 
 
 
 # %%
-N = 100_000
+for col_name in collections:
 
-indices = np.random.choice(data.shape[0], size=N, replace=False)
-indices_mask = np.random.choice(sum(mask_flow), size=N, replace=False)
+    print(f"Analyzing {col_name}...")
 
-
-
-run_eval_suite(data[indices], flow_samples[indices], [0.1, 0.2, 0.4])
+    N = 100_000
+    
+    indices = np.random.choice(data.shape[0], size=N, replace=False)
+    #indices_mask = np.random.choice(sum(mask_flow), size=N, replace=False)
+    
+    
+    
+    run_eval_suite(all_data_dir[col_name][indices], all_samples_dir[col_name][indices], [0.1, 0.2, 0.4],
+                  plot_suffix=f"_{col_name}")
 
 
 # %%
