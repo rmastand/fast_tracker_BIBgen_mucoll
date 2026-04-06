@@ -28,7 +28,7 @@ import zuko
 from helpers.models.DNN import count_parameters
 from helpers.data_transforms import preprocess_data, inverse_preprocess_data, load_in_data
 from helpers.evaluation import get_kl_dist, discriminate_data_from_samples
-
+from helpers.flow import sample_from_flow
 plt.style.use("../science.mplstyle")
 
 
@@ -52,7 +52,7 @@ parser.add_argument("--FEATURES", default="xy")
 
 parser.add_argument("--SEED", type=int, default=8, help="Random seed")
 parser.add_argument("--NUM_EPOCHS", type=int, default=5, help="Number of training epochs")
-parser.add_argument("--LEARNING_RATE", type=float, default=1e-4, help="Learning rate")
+parser.add_argument("--LEARNING_RATE", type=float, default=1e-3, help="Learning rate")
 parser.add_argument("--TRAINING_FRAC", type=float, default=1, help="How much training data to use")
 parser.add_argument("--BATCH_SIZE", type=int, default=512, help="Batch size")
 parser.add_argument("--NUM_COND_INPUTS", type=int, default=0, help="Number of conditional inputs")
@@ -96,83 +96,95 @@ log_vars = []
 
 # %%
 
-data, _, feature_labels = load_in_data(collection_list, args.FEATURES, args.WORKING_DIR, args.TRAINING_FRAC)
+data, context, feature_labels = load_in_data(collection_list, args.FEATURES, args.WORKING_DIR, args.TRAINING_FRAC, args.NUM_COND_INPUTS)
+print(f"Data has shape {data.shape}.")
+print(f"Context has shape {context.shape}.")
+NUM_FEATURES = data.shape[1]
+if args.NUM_COND_INPUTS > 0:
+    X = np.hstack([data,  context])
+elif args.NUM_COND_INPUTS == 0:
+    X = data
+
+
 
 
 bins_dict = {}
-bins_dict_preproc = {i:np.linspace(-BIN_BOUND, BIN_BOUND, NUM_BINS) for i in range(data.shape[1])}
+bins_dict_preproc = {i:np.linspace(-BIN_BOUND, BIN_BOUND, NUM_BINS) for i in range(X.shape[1])}
 
-for i in range(data.shape[1]):
+for i in range(X.shape[1]):
     if i in log_vars:
-        bins_dict[i] = np.logspace(np.log10(0.9*np.min(data[:,i])), np.log10(1.1*np.max(data[:,i])), NUM_BINS) 
+        bins_dict[i] = np.logspace(np.log10(0.9*np.min(X[:,i])), np.log10(1.1*np.max(X[:,i])), NUM_BINS) 
     else:
-        bins_dict[i] = np.linspace(np.min(data[:,i] - 3), np.max(data[:,i] + 3), NUM_BINS) 
+        bins_dict[i] = np.linspace(np.min(X[:,i] - 3), np.max(X[:,i] + 3), NUM_BINS) 
 
 
+fig_samp, axes_samp = plot_corner_hist_2d(
+        X,
+        feature_labels=feature_labels,
+        bins_dict=bins_dict,
+        log_dims=log_vars,
+        title= "data",
+    )
+plt.savefig(f"{save_dir}/data_final")
+plt.close()
 
 # %%
 
 
-X_preproc = preprocess_data(data, save_dir, args.ZUKO_ID)
-if args.NUM_COND_INPUTS == 1:
-    X_preproc = np.hstack([X_preproc,  context])
-elif args.NUM_COND_INPUTS == 0:
-    pass
-else:
-    print("ERROR")
-    exit()
+X_preproc = preprocess_data(X, save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS)
+
+# plot_hists_1d({"data":data}, bins_dict, log_dims=log_vars, labels=feature_labels)
+# plt.show()
+
+# plot_hists_1d({"data":X_preproc}, bins_dict_preproc, log_dims=[], labels = feature_labels)
+# plt.show()
 
 
-plot_hists_1d({"data":data}, bins_dict, log_dims=log_vars, labels=feature_labels)
-plt.show()
 
-plot_hists_1d({"data":X_preproc}, bins_dict_preproc, log_dims=[], labels = feature_labels)
-plt.show()
 
 
 # %%
 # train val split
 from sklearn.model_selection import train_test_split
 
-data_train, data_val = train_test_split(X_preproc, test_size=0.2, random_state=42)
 
-print(f"Train data has shape {data_train.shape}.")
-print(f"Val data has shape {data_val.shape}.")
+X_train, X_val = train_test_split(X_preproc, test_size=0.2, random_state=42)
 
 
-train_loader = torch.utils.data.DataLoader(data_train, batch_size=args.BATCH_SIZE, shuffle=True, num_workers = 8, pin_memory = True)
-val_loader = torch.utils.data.DataLoader(data_val, batch_size=args.BATCH_SIZE, shuffle=False, num_workers = 8, pin_memory = True)
+print(f"Train data has shape {X_train.shape}.")
+print(f"Val data has shape {X_val.shape}.")
 
+train_loader = torch.utils.data.DataLoader(X_train, batch_size=args.BATCH_SIZE, shuffle=True, num_workers = 8, pin_memory = True)
+val_loader = torch.utils.data.DataLoader(X_val, batch_size=args.BATCH_SIZE, shuffle=False, num_workers = 8, pin_memory = True)
 
 # %%
 import zuko
 
-# Neural spline flow (NSF) with 3 sample features and 5 context features
 
 hidden_features = [int(x) for x in args.HIDDEN_FEATURES.split(",")]
 
 if args.ZUKO_ID == "NSF":
-    flow = zuko.flows.NSF(5, 0, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
+    flow = zuko.flows.NSF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
 #elif args.ZUKO_ID == "GMM":
-#    flow = zuko.flows.GMM(5, 0, components=30, hidden_features=[256] * 5).to(device)
+#    flow = zuko.flows.GMM(NUM_FEATURES, args.NUM_COND_INPUTS, components=30, hidden_features=[256] * 5).to(device)
 #elif args.ZUKO_ID == "NICE":
-#    flow = zuko.flows.NICE(5, 0, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
+#    flow = zuko.flows.NICE(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
 #elif args.ZUKO_ID == "MAF":
-#    flow = zuko.flows.MAF(5, 0, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
+#    flow = zuko.flows.MAF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
 elif args.ZUKO_ID == "NCSF":
-    flow = zuko.flows.NCSF(5, 0, transforms=args.TRANSFORMS, hidden_features=hidden_features, bins=16).to(device)
+    flow = zuko.flows.NCSF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, bins=16).to(device)
 elif args.ZUKO_ID == "SOSPF":
-    flow = zuko.flows.SOSPF(5, 0, transforms=args.TRANSFORMS, hidden_features=hidden_features, degree=4, polynomials=3).to(device)
+    flow = zuko.flows.SOSPF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, degree=4, polynomials=3).to(device)
 #elif args.ZUKO_ID == "NAF":
-#    flow = zuko.flows.NAF(5, 0, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
+#    flow = zuko.flows.NAF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
 elif args.ZUKO_ID == "UNAF":
-    flow = zuko.flows.UNAF(5, 0, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
+    flow = zuko.flows.UNAF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
 elif args.ZUKO_ID == "CNF":
-    flow = zuko.flows.CNF(5, 0, hidden_features=hidden_features, freqs=args.FREQS).to(device)
+    flow = zuko.flows.CNF(NUM_FEATURES, args.NUM_COND_INPUTS, hidden_features=hidden_features, freqs=args.FREQS).to(device)
 #elif args.ZUKO_ID == "GF":
-#    flow = zuko.flows.GF(5, 0, transforms=args.TRANSFORMS, hidden_features=hidden_features, components=8).to(device)
+#    flow = zuko.flows.GF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, components=8).to(device)
 #elif args.ZUKO_ID == "BPF":
-#    flow = zuko.flows.BPF(5, 0, transforms=args.TRANSFORMS, hidden_features=hidden_features, degree=16).to(device)
+#    flow = zuko.flows.BPF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, degree=16).to(device)
 else:
     print("ERROR: Unknown ZUKO_ID")
     exit()
@@ -206,11 +218,19 @@ if args.TRAIN_FLOW:
             optimizer.zero_grad()
 
             x = x.to(device).float()
+           
+            if args.NUM_COND_INPUTS > 0:
+                x_data = x[:,:-args.NUM_COND_INPUTS]
+                x_context = x[:,-args.NUM_COND_INPUTS:]
+                loss = -flow(x_context).log_prob(x_data).mean()
+            else:
+                loss = -flow().log_prob(x).mean()
+            
 
-            loss = -flow().log_prob(x).mean()
-
+        
             epoch_losses_train.append(loss.item())
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(flow.parameters(), 5.0)
             optimizer.step()
             pbar.set_postfix(loss=f"{loss.item():.3e}, epoch {k}")
 
@@ -222,7 +242,13 @@ if args.TRAIN_FLOW:
 
             x = x.to(device).float()
             with torch.no_grad():
-                loss = -flow().log_prob(x).mean()
+                if args.NUM_COND_INPUTS > 0:
+                    x_data = x[:,:-args.NUM_COND_INPUTS]
+                    x_context = x[:,-args.NUM_COND_INPUTS:]
+                    loss = -flow(x_context).log_prob(x_data).mean()
+                else:
+                    loss = -flow().log_prob(x).mean()
+            
         
             epoch_losses_val.append(loss.item())
             pbar.set_postfix(loss=f"{loss.item():.3e}, epoch {k}")
@@ -251,14 +277,21 @@ if args.TRAIN_FLOW:
             plt.ylabel("Loss")
             plt.legend()
             plt.savefig(f"{save_dir}/losses")
+            plt.close()
+
+            factor = 5
+            if args.NUM_COND_INPUTS > 0:
+                context_to_sample = x_context.repeat_interleave(factor, dim=0)   # (2N, C)
+                
+            samples = sample_from_flow(flow, N=factor*len(x_data), x_context=context_to_sample if args.NUM_COND_INPUTS > 0 else None)
 
             
-            samples = flow().sample((10000,)).detach().cpu().numpy()
                 
-            loc_data_dict = {"data": inverse_preprocess_data( data_val , save_dir, args.ZUKO_ID),
-                    "generated": inverse_preprocess_data( samples , save_dir, args.ZUKO_ID)}
+            loc_data_dict = {"data": inverse_preprocess_data( x.detach().cpu().numpy() , save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS),
+                    "generated": inverse_preprocess_data( samples , save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS)}
             plot_hists_1d(loc_data_dict, bins_dict, log_dims=log_vars, labels=feature_labels)
             plt.savefig(f"{save_dir}/hists")
+            plt.close()
 
             for key in loc_data_dict.keys():
                 fig_samp, axes_samp = plot_corner_hist_2d(
@@ -269,6 +302,7 @@ if args.TRAIN_FLOW:
                     title= key,
                 )
                 plt.savefig(f"{save_dir}/corner_{key}")
+                plt.close()
 
 
 
@@ -281,7 +315,7 @@ if args.EVAL_FLOW:
 
     eval_flow.load_state_dict(torch.load(f"{save_dir}/test.pt"))
 
-    num_samples_total = data.shape[0] 
+    num_samples_total = X.shape[0] 
     sample_batch_size = 8192
 
     samples_flow = []
@@ -290,20 +324,32 @@ if args.EVAL_FLOW:
             nn = num_samples_total - i
         else:
             nn = sample_batch_size
-        loc_samples = eval_flow().sample((nn,)).detach().cpu().numpy()
+
+
+        if args.NUM_COND_INPUTS > 0:
+            context_to_sample = torch.tensor(
+                X[i:i+nn, -args.NUM_COND_INPUTS:], dtype=torch.float32
+            ).to(device)
+
+
+        loc_samples = sample_from_flow(eval_flow, N=nn, x_context=context_to_sample if args.NUM_COND_INPUTS > 0 else None)
+
+
+
         samples_flow.append(loc_samples)
     samples_flow = np.concatenate(samples_flow)
   
 
     
-    samples_flow = inverse_preprocess_data( samples_flow , save_dir, args.ZUKO_ID)
+    samples_flow = inverse_preprocess_data( samples_flow , save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS)
     np.save(f"{save_dir}/flow_samples.npy", samples_flow)
 
 
     # %%
 
-    plot_hists_1d({"data":data, "generated":samples_flow}, bins_dict, log_dims=log_vars, labels=feature_labels)
+    plot_hists_1d({"data":X, "generated":samples_flow}, bins_dict, log_dims=log_vars, labels=feature_labels)
     plt.savefig(f"{save_dir}/hists_final")
+    plt.close()
 
 
     # %%
@@ -315,6 +361,7 @@ if args.EVAL_FLOW:
         title= "generated",
     )
     plt.savefig(f"{save_dir}/corner_generated_final")
+    plt.close()
 
 
 
@@ -324,8 +371,8 @@ if args.EVAL_FLOW:
     # %%
 
     with open(f"{save_dir}/results.txt", "w") as ofile:
-        ks_dists_samples = get_kl_dist(data, samples_flow)
-        ks_dists_gaussians = get_kl_dist(np.random.normal(size = data.shape), np.random.normal(size =  samples_flow.shape))
+        ks_dists_samples = get_kl_dist(X, samples_flow)
+        ks_dists_gaussians = get_kl_dist(np.random.normal(size = X.shape), np.random.normal(size =  samples_flow.shape))
         
                                                 
         for i, ks_dist in enumerate(ks_dists_samples):
@@ -333,7 +380,7 @@ if args.EVAL_FLOW:
             ofile.write("\n")
         
         auc_mean, auc_std, best_epoch_list, max_epochs, _, _, _ = discriminate_data_from_samples(
-            data,
+            X,
             samples_flow,
             args.NUM_BDTS,
             "configs/bdt.yml",

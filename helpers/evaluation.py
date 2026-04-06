@@ -73,7 +73,8 @@ def discriminate_data_from_samples(
     device=None,
     val_size=0.3,
     subsample_frac=None,  # optional subsample for large datasets,
-    plot_dir=None
+    plot_dir=None,
+    verbose=False,
 ):
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -99,7 +100,8 @@ def discriminate_data_from_samples(
         data = data[idx_data]
         samples = samples[idx_samples]
 
-    print(data.shape, samples.shape)
+    if verbose:
+        print(data.shape, samples.shape)
 
     # ======================
     # Split data
@@ -126,7 +128,9 @@ def discriminate_data_from_samples(
     # Training loop
     # ======================
     for i in range(n_runs):
-        print(f"On {model_type.upper()} run {i+1} of {n_runs}...")
+
+        if verbose:
+            print(f"On {model_type.upper()} run {i+1} of {n_runs}...")
 
         if model_type.lower() == "bdt":
             bdt_params = config_dict["bdt_hyperparameters"]
