@@ -5,26 +5,31 @@ import pickle
 epsilon = 1e-12
 
 
-def load_in_data(collection_list, features, working_dir, training_frac, num_cond_features=0):
+def load_in_data(collection_list, features, working_dir, training_frac, num_cond_features=0, feature_order=None, num_files=1):
         
     data = []
     context = []
+
+
+    
     
     for i, collection in enumerate(collection_list):
+        for r in range(num_files):
 
-        if num_cond_features == 0:
-            tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit.npy")
-            data.append(tmp_data[:int(len(tmp_data)*training_frac)])
-        elif num_cond_features > 0:
-            tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit_conditional.npy")
+            if num_cond_features == 0:
+                tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit_reco_{r}.npy")
+                data.append(tmp_data[:int(len(tmp_data)*training_frac)])
+            elif num_cond_features > 0:
+                tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit_conditional_reco_{r}.npy")
 
-            data.append(tmp_data[:int(len(tmp_data)*training_frac), :-num_cond_features])
-            context.append(tmp_data[:int(len(tmp_data)*training_frac), -num_cond_features:])
-            context = np.vstack(context)
-
+                data.append(tmp_data[:int(len(tmp_data)*training_frac), :-num_cond_features])
+                context.append(tmp_data[:int(len(tmp_data)*training_frac), -num_cond_features:])
+               
         
     
     data = np.vstack(data)
+    if num_cond_features > 0:
+        context = np.vstack(context)
     data[:,0] = np.log(data[:,0]) #preprocess the energy
     
 
@@ -33,12 +38,20 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
         theta = np.arctan2(data[:, 2], data[:, 1])
         data[:,1] = r
         data[:,2] = theta
-        feature_labels = ["log($E$) [Gev]", "$r$", "$phi$", "$z$", "$t$ [s]"] + ["context"]*num_cond_features
-    else: 
-        feature_labels = ["log($E$) [Gev]", "$x$", "$y$", "$z$", "$t$ [s]"] + ["context"]*num_cond_features
+        feature_labels = ["log($E$) [Gev]", "$r$", "$\phi$", "$z$", "$t$ [s]", "side", "layer"]
+    else:
+        feature_labels = ["log($E$) [Gev]", "$x$", "$y$", "$z$", "$t$ [s]", "side", "layer"]
 
+    X = np.hstack([data,  context]) if num_cond_features > 0 else data
 
-    return data, context, feature_labels
+    if feature_order is not None:
+        X = X[:, feature_order]
+        feature_labels = [feature_labels[i] for i in feature_order]
+
+    for i in range(num_cond_features):
+        feature_labels[-1-i] = feature_labels[-1-i] + " (cond)"
+
+    return X, feature_labels
 
 
 

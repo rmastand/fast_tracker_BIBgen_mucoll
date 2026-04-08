@@ -48,6 +48,7 @@ parser.add_argument("--NAME", type=str, default="", help="Name")
 parser.add_argument("--COLLECTION_LIST", type=str, default="OuterTrackerBarrelCollection")
 parser.add_argument("--WORKING_DIR", default="/pscratch/sd/r/rmastand/muon_collider", type=str, help="Where to store model outputs and plots")
 parser.add_argument("--FEATURES", default="xy")
+parser.add_argument("--FEATURE_ORDER", default=None, help="Comma-separated list of feature indices to specify order. If None, uses default order.")
 
 
 parser.add_argument("--SEED", type=int, default=8, help="Random seed")
@@ -95,17 +96,11 @@ print(collection_list)
 log_vars = []
 
 # %%
-
-data, context, feature_labels = load_in_data(collection_list, args.FEATURES, args.WORKING_DIR, args.TRAINING_FRAC, args.NUM_COND_INPUTS)
-print(f"Data has shape {data.shape}.")
-print(f"Context has shape {context.shape}.")
-NUM_FEATURES = data.shape[1]
-if args.NUM_COND_INPUTS > 0:
-    X = np.hstack([data,  context])
-elif args.NUM_COND_INPUTS == 0:
-    X = data
-
-
+FEATURE_ORDER = None if args.FEATURE_ORDER is None else [int(x) for x in args.FEATURE_ORDER.split(",")]
+X, feature_labels = load_in_data(collection_list, args.FEATURES, args.WORKING_DIR, args.TRAINING_FRAC, args.NUM_COND_INPUTS, feature_order=FEATURE_ORDER)
+print(f"Data has shape {X.shape}")
+print("Feature labels:", feature_labels)
+NUM_FEATURES = X.shape[1] - args.NUM_COND_INPUTS
 
 
 bins_dict = {}
