@@ -94,7 +94,7 @@ r_side_layer_map_barrel = {'InnerTrackerBarrelCollection': {(0, 0): {'starts': [
 
 
 
-def build_material_map_2Dphi(data_dir, feature_indices_dict, N_BINS=300):
+def build_material_map_2Dphi(data_dir, master_feature_indices_dict, N_BINS=300):
 
     
     material_map = {}
@@ -102,11 +102,11 @@ def build_material_map_2Dphi(data_dir, feature_indices_dict, N_BINS=300):
     for col_name in data_dir.keys():
 
         if "Barrel" in col_name:
-            tangent_coord = data_dir[col_name][:, feature_indices_dict["z"]]
+            tangent_coord = data_dir[col_name][:, master_feature_indices_dict[col_name]["r"]]
         elif "Endcap" in col_name: 
-            tangent_coord = data_dir[col_name][:, feature_indices_dict["r"]]
+            tangent_coord = data_dir[col_name][:, master_feature_indices_dict[col_name]["r"]]
             
-        phi = data_dir[col_name][:, feature_indices_dict["phi"]]
+        phi = data_dir[col_name][:, master_feature_indices_dict[col_name]["phi"]]
 
 
         bins_coord = np.linspace(0.99*tangent_coord.min(), 1.01*tangent_coord.max(), N_BINS)
@@ -124,27 +124,27 @@ def build_material_map_2Dphi(data_dir, feature_indices_dict, N_BINS=300):
 
 
 
-def apply_material_map_hybrid(samples_dir, material_map, col_name, feature_indices_dict):
+def apply_material_map_hybrid(samples_dir, material_map, col_name, master_feature_indices_dict):
 
     data = samples_dir[col_name]
 
     if "Barrel" in col_name:
-        tangent_coord = data_dir[col_name][:, feature_indices_dict["z"]]
-        layer_coord = data[:, feature_indices_dict["r"]]
+        tangent_coord = data[:, master_feature_indices_dict[col_name]["r"]]
+        layer_coord = data[:, master_feature_indices_dict[col_name]["r"]]
         geom = r_side_layer_map_barrel[col_name]
     elif "Endcap" in col_name: 
-        tangent_coord = data_dir[col_name][:, feature_indices_dict["r"]] 
-        layer_coord = data[:, feature_indices_dict["z"]]
+        tangent_coord = data[:, master_feature_indices_dict[col_name]["r"]] 
+        layer_coord = data[:, master_feature_indices_dict[col_name]["z"]]
         geom = z_side_layer_map_endcaps[col_name]
 
-    phi = data_dir[col_name][:, feature_indices_dict["phi"]]
-    side = data[:, feature_indices_dict["side"]].astype(int)
-    layer_id = data[:, feature_indices_dict["layer"]].astype(int)
+    phi = data[:, master_feature_indices_dict[col_name]["phi"]]
+    side = data[:, master_feature_indices_dict[col_name]["side"]].astype(int)
+    layer_id = data[:, master_feature_indices_dict[col_name]["layer"]].astype(int)
 
     # --- r, phi mask ---
     H_mask, tangent_coord_edges, phi_edges = material_map[col_name]
 
-    tangent_coord_idx = np.digitize(r, r_edges) - 1
+    tangent_coord_idx = np.digitize(tangent_coord, tangent_coord_edges) - 1
     phi_idx = np.digitize(phi, phi_edges) - 1
 
     valid_tangent_coord_phi = (
@@ -159,7 +159,7 @@ def apply_material_map_hybrid(samples_dir, material_map, col_name, feature_indic
     mask_geom = np.zeros(len(data), dtype=bool)
 
     for (s, l), layer_coord_dict in geom.items():
-        idx = (side == s) & (layer == l)
+        idx = (side == s) & (layer_id == l)
 
         if not np.any(idx):
             continue
