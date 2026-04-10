@@ -1,5 +1,134 @@
 import numpy as np
 
+####################################################################################################
+#
+# EXPLICITLY BUILDING THE MODULES FROM THE MAIA XML FILES
+#
+####################################################################################################
+
+
+
+INNER_LAYERS = [
+    {'rc': 127.0, 'nphi': 28,  'drp': 0., "drm": 2.5},
+    {'rc': 340.0, 'nphi': 76,  'drp': 0., "drm": 2.5},
+    {'rc': 554.0, 'nphi': 124, 'drp': 0., "drm": 2.5},
+]
+INNER_HALF_LENGTH = 15.05  # mm, tangential half-width of module
+
+def buildInnerTrackerBarrelModules():
+    modules = []
+    for layer in INNER_LAYERS:
+        rc, nphi, drp, drm = layer['rc'], layer['nphi'], layer['drp'], layer['drm']
+        for iphi in range(nphi):
+            phi = 2 * np.pi * iphi / nphi
+            if iphi % 2 == 0:
+                r = rc - drp 
+            else:
+                r = rc + drm
+            cx  = r * np.cos(phi)
+            cy  = r * np.sin(phi)
+            # tangent direction (perpendicular to radial)
+            tx  = -np.sin(phi)
+            ty  =  np.cos(phi)
+            modules.append({
+                'x0': cx - INNER_HALF_LENGTH * tx,
+                'y0': cy - INNER_HALF_LENGTH * ty,
+                'x1': cx + INNER_HALF_LENGTH * tx,
+                'y1': cy + INNER_HALF_LENGTH * ty,
+            })
+    return modules
+
+
+OUTER_LAYERS = [
+{'rc': 819.0,  'nphi': 184, 'drp': 0., 'drm': 5.5},
+{'rc': 1153.0, 'nphi': 256, 'drp': 0., 'drm': 5.5},
+{'rc': 1486.0, 'nphi': 328, 'drp': 0., 'drm': 5.5},
+]
+OUTER_HALF_LENGTH = 15.05
+
+def buildOuterTrackerBarrelModules():
+    modules = []
+    for layer in OUTER_LAYERS:
+        rc, nphi, drp, drm = layer['rc'], layer['nphi'], layer['drp'], layer['drm']
+        for iphi in range(nphi):
+            phi = 2 * np.pi * iphi / nphi
+            r   = rc - drp if iphi % 2 == 0 else rc + drm
+            cx  = r * np.cos(phi)
+            cy  = r * np.sin(phi)
+            tx  = -np.sin(phi)
+            ty  =  np.cos(phi)
+            modules.append({
+                'x0': cx - OUTER_HALF_LENGTH * tx,
+                'y0': cy - OUTER_HALF_LENGTH * ty,
+                'x1': cx + OUTER_HALF_LENGTH * tx,
+                'y1': cy + OUTER_HALF_LENGTH * ty,
+            })
+    return modules
+
+
+SUPPORT_THICKNESS  = 0.140  # mm
+SENSITIVE_THICKNESS = 0.050  # mm
+DOUBLELAYER_GAP    = 2.0    # mm
+
+# (r_inner_face, nstaves, width, offset)
+# sensitive layer sits at r + SUPPORT_THICKNESS (inner) or r + GAP + ... (outer)
+VERTEX_LAYERS = [
+    # layer 0+1: r1=30mm, 16 staves, width=13mm, offset=2mm
+    {'r': 30.0,  'nstaves': 16, 'width': 13.0, 'offset': 2.0},
+    # layer 2:   r2=51mm, 15 staves, width=23mm, offset=2mm  (no double layer in xml)
+    {'r': 51.0,  'nstaves': 15, 'width': 23.0, 'offset': 2.0},
+    # layer 4:   r3=74mm, 21 staves, width=24mm, offset=2mm
+    {'r': 74.0,  'nstaves': 21, 'width': 24.0, 'offset': 2.0},
+    # layer 6:   r4=102mm,29 staves, width=24mm, offset=2mm
+    {'r': 102.0, 'nstaves': 29, 'width': 24.0, 'offset': 2.0},
+]
+
+
+def buildVertexBarrelModules():
+    modules = []
+    for i_layer, layer in enumerate(VERTEX_LAYERS):
+        r, nstaves, width, offset = layer['r'], layer['nstaves'], layer['width'], layer['offset']
+
+        r_sens_inner = r + SUPPORT_THICKNESS
+        r_sens_outer = r + SUPPORT_THICKNESS + SENSITIVE_THICKNESS + DOUBLELAYER_GAP
+
+        # only innermost layer (i_layer==0) gets both; rest get inner only
+        radii = [r_sens_inner, r_sens_outer] if i_layer == 0 else [r_sens_inner]
+
+        for r_sens in radii:
+            for i in range(nstaves):
+                phi = 2 * np.pi * i / nstaves
+                rx, ry = np.cos(phi), np.sin(phi)
+                tx, ty = -np.sin(phi), np.cos(phi)
+                cx = r_sens * rx + offset * tx
+                cy = r_sens * ry + offset * ty
+                half_w = width / 2.0
+                modules.append({
+                    'x0': cx - half_w * tx,
+                    'y0': cy - half_w * ty,
+                    'x1': cx + half_w * tx,
+                    'y1': cy + half_w * ty,
+                })
+
+    return modules
+
+def make_mask(x, y, modules, corridor_width=2.0):
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    mask = np.zeros(len(x), dtype=bool)
+    for m in modules:
+        dx, dy = m['x1'] - m['x0'], m['y1'] - m['y0']
+        len_sq = dx*dx + dy*dy
+        t  = np.clip(((x - m['x0'])*dx + (y - m['y0'])*dy) / len_sq, 0, 1)
+        px = m['x0'] + t*dx
+        py = m['y0'] + t*dy
+        mask |= (x - px)**2 + (y - py)**2 <= corridor_width**2
+    return mask
+
+
+
+""""""
+
 
 def build_material_map_3D(data_dir, features, bins=(300, 300, 300)):
     """
@@ -103,10 +232,13 @@ def build_material_map_2Dphi(data_dir, master_feature_indices_dict, N_BINS=300):
 
         if "Barrel" in col_name:
             tangent_coord = data_dir[col_name][:, master_feature_indices_dict[col_name]["r"]]
+            N_BINS = 800
         elif "Endcap" in col_name: 
             tangent_coord = data_dir[col_name][:, master_feature_indices_dict[col_name]["r"]]
+            N_BINS = 320
             
         phi = data_dir[col_name][:, master_feature_indices_dict[col_name]["phi"]]
+        
 
 
         bins_coord = np.linspace(0.99*tangent_coord.min(), 1.01*tangent_coord.max(), N_BINS)
@@ -123,39 +255,118 @@ def build_material_map_2Dphi(data_dir, master_feature_indices_dict, N_BINS=300):
 
 
 
+# def apply_material_map_hybrid(samples_dir, material_map, col_name, master_feature_indices_dict):
+
+#     data = samples_dir[col_name]
+
+#     if "Barrel" in col_name:
+#         tangent_coord = data[:, master_feature_indices_dict[col_name]["r"]]
+#         layer_coord = data[:, master_feature_indices_dict[col_name]["r"]]
+#         geom = r_side_layer_map_barrel[col_name]
+#     elif "Endcap" in col_name: 
+#         tangent_coord = data[:, master_feature_indices_dict[col_name]["r"]] 
+#         layer_coord = data[:, master_feature_indices_dict[col_name]["z"]]
+#         geom = z_side_layer_map_endcaps[col_name]
+
+#     phi = data[:, master_feature_indices_dict[col_name]["phi"]]
+#     side = data[:, master_feature_indices_dict[col_name]["side"]].astype(int)
+#     layer_id = data[:, master_feature_indices_dict[col_name]["layer"]].astype(int)
+
+#     # --- r, phi mask ---
+#     H_mask, tangent_coord_edges, phi_edges = material_map[col_name]
+
+#     tangent_coord_idx = np.digitize(tangent_coord, tangent_coord_edges) - 1
+#     phi_idx = np.digitize(phi, phi_edges) - 1
+
+#     valid_tangent_coord_phi = (
+#         (tangent_coord_idx >= 0) & (tangent_coord_idx < H_mask.shape[0]) &
+#         (phi_idx >= 0) & (phi_idx < H_mask.shape[1])
+#     )
+
+#     mask_tangent_coord_phi = np.zeros(len(data), dtype=bool)
+#     mask_tangent_coord_phi[valid_tangent_coord_phi] = H_mask[tangent_coord_idx[valid_tangent_coord_phi], phi_idx[valid_tangent_coord_phi]]
+
+ 
+#     mask_geom = np.zeros(len(data), dtype=bool)
+
+#     for (s, l), layer_coord_dict in geom.items():
+#         idx = (side == s) & (layer_id == l)
+
+#         if not np.any(idx):
+#             continue
+
+#         layer_coord_vals = layer_coord[idx]
+
+#         layer_coord_mask_local = np.zeros_like(layer_coord_vals, dtype=bool)
+
+#         for start, stop in zip(layer_coord_dict["starts"], layer_coord_dict["stops"]):
+#             layer_coord_mask_local |= (layer_coord_vals >= start) & (layer_coord_vals <= stop)
+
+#         mask_geom[idx] = layer_coord_mask_local
+
+#     # --- final mask ---
+#     return mask_tangent_coord_phi & mask_geom
+
+
+
+modules_dir = {
+
+    "InnerTrackerBarrelCollection": buildInnerTrackerBarrelModules(),
+    "OuterTrackerBarrelCollection": buildOuterTrackerBarrelModules(),
+    "VertexBarrelCollection": buildVertexBarrelModules(),
+}
+
+
 
 def apply_material_map_hybrid(samples_dir, material_map, col_name, master_feature_indices_dict):
 
+    """
+    material_map is in r-phi. We only use it for the endcaps (tbd)
+    """
+
     data = samples_dir[col_name]
+
+    phi = data[:, master_feature_indices_dict[col_name]["phi"]]
+    side = data[:, master_feature_indices_dict[col_name]["side"]].astype(int)
+    layer_id = data[:, master_feature_indices_dict[col_name]["layer"]].astype(int)
+   
 
     if "Barrel" in col_name:
         tangent_coord = data[:, master_feature_indices_dict[col_name]["r"]]
         layer_coord = data[:, master_feature_indices_dict[col_name]["r"]]
         geom = r_side_layer_map_barrel[col_name]
+
+        loc_x = data[:, master_feature_indices_dict[col_name]["r"]]*np.cos(phi)
+        loc_y = data[:, master_feature_indices_dict[col_name]["r"]]*np.sin(phi)
+
+        if col_name in ["InnerTrackerBarrelCollection", "OuterTrackerBarrelCollection"]:
+            mask_tangent_coord_phi =  make_mask(loc_x, loc_y,modules_dir[col_name], corridor_width=2.0)
+        elif col_name in ["VertexBarrelCollection"]:
+            mask_tangent_coord_phi =  make_mask(loc_x, loc_y,modules_dir[col_name], corridor_width=0.5)
+
+        
     elif "Endcap" in col_name: 
         tangent_coord = data[:, master_feature_indices_dict[col_name]["r"]] 
         layer_coord = data[:, master_feature_indices_dict[col_name]["z"]]
         geom = z_side_layer_map_endcaps[col_name]
 
-    phi = data[:, master_feature_indices_dict[col_name]["phi"]]
-    side = data[:, master_feature_indices_dict[col_name]["side"]].astype(int)
-    layer_id = data[:, master_feature_indices_dict[col_name]["layer"]].astype(int)
+        
+        # --- r, phi mask ---
+        H_mask, tangent_coord_edges, phi_edges = material_map[col_name]
+    
+        tangent_coord_idx = np.digitize(tangent_coord, tangent_coord_edges) - 1
+        phi_idx = np.digitize(phi, phi_edges) - 1
+    
+        valid_tangent_coord_phi = (
+            (tangent_coord_idx >= 0) & (tangent_coord_idx < H_mask.shape[0]) &
+            (phi_idx >= 0) & (phi_idx < H_mask.shape[1])
+        )
+    
+        mask_tangent_coord_phi = np.zeros(len(data), dtype=bool)
+        mask_tangent_coord_phi[valid_tangent_coord_phi] = H_mask[tangent_coord_idx[valid_tangent_coord_phi], phi_idx[valid_tangent_coord_phi]]
 
-    # --- r, phi mask ---
-    H_mask, tangent_coord_edges, phi_edges = material_map[col_name]
 
-    tangent_coord_idx = np.digitize(tangent_coord, tangent_coord_edges) - 1
-    phi_idx = np.digitize(phi, phi_edges) - 1
-
-    valid_tangent_coord_phi = (
-        (tangent_coord_idx >= 0) & (tangent_coord_idx < H_mask.shape[0]) &
-        (phi_idx >= 0) & (phi_idx < H_mask.shape[1])
-    )
-
-    mask_tangent_coord_phi = np.zeros(len(data), dtype=bool)
-    mask_tangent_coord_phi[valid_tangent_coord_phi] = H_mask[tangent_coord_idx[valid_tangent_coord_phi], phi_idx[valid_tangent_coord_phi]]
-
- 
+    # Define the geometric map (as a function of layer)
     mask_geom = np.zeros(len(data), dtype=bool)
 
     for (s, l), layer_coord_dict in geom.items():
