@@ -11,113 +11,130 @@ import numpy as np
 # BARREL
 #
 ####################################################################################################
+import numpy as np
 
+# ── Constants ─────────────────────────────────────────────────────────────────
+MODULE_HALF_LENGTH  = 15.05   # mm — tangential half-length of all barrel modules
+HALF_SENSITIVE      = 0.050   # mm — half of 0.100mm sensitive Si layer
+
+# ── Inner Tracker Barrel ──────────────────────────────────────────────────────
+# rc = sensitive layer radius (DD4hep places sensor exactly at rc)
+# nphi_half * 2 = total modules per layer (staggered double ring)
+# dr = radial stagger between inner and outer ring
 
 INNER_LAYERS = [
-    {'rc': 127.0, 'nphi': 28,  'drp': 0., "drm": 2.5},
-    {'rc': 340.0, 'nphi': 76,  'drp': 0., "drm": 2.5},
-    {'rc': 554.0, 'nphi': 124, 'drp': 0., "drm": 2.5},
+    {'rc': 127.0, 'nphi_half': 14, 'dr': 2.5},
+    {'rc': 340.0, 'nphi_half': 38, 'dr': 2.5},
+    {'rc': 554.0, 'nphi_half': 62, 'dr': 2.5},
 ]
-INNER_HALF_LENGTH = 15.05  # mm, tangential half-width of module
 
 def buildInnerTrackerBarrelModules():
     modules = []
     for layer in INNER_LAYERS:
-        rc, nphi, drp, drm = layer['rc'], layer['nphi'], layer['drp'], layer['drm']
+        rc, nphi_half, dr = layer['rc'], layer['nphi_half'], layer['dr']
+        nphi = nphi_half * 2
         for iphi in range(nphi):
-            phi = 2 * np.pi * iphi / nphi
-            if iphi % 2 == 0:
-                r = rc - drp 
-            else:
-                r = rc + drm
-            cx  = r * np.cos(phi)
-            cy  = r * np.sin(phi)
-            # tangent direction (perpendicular to radial)
-            tx  = -np.sin(phi)
-            ty  =  np.cos(phi)
+            phi      = 2 * np.pi * iphi / nphi
+            r_sensor = rc if iphi % 2 == 0 else rc + dr
+            cx = r_sensor * np.cos(phi)
+            cy = r_sensor * np.sin(phi)
+            tx, ty = -np.sin(phi), np.cos(phi)
             modules.append({
-                'x0': cx - INNER_HALF_LENGTH * tx,
-                'y0': cy - INNER_HALF_LENGTH * ty,
-                'x1': cx + INNER_HALF_LENGTH * tx,
-                'y1': cy + INNER_HALF_LENGTH * ty,
+                'x0': cx - MODULE_HALF_LENGTH * tx,
+                'y0': cy - MODULE_HALF_LENGTH * ty,
+                'x1': cx + MODULE_HALF_LENGTH * tx,
+                'y1': cy + MODULE_HALF_LENGTH * ty,
             })
     return modules
 
+# ── Outer Tracker Barrel ──────────────────────────────────────────────────────
+# rc = module envelope centre (sensor offset must be computed from stack)
+# drp/drm = radial stagger for even/odd phi modules
+# sensor_offset = distance from module inner face to sensor centre
+#   layers 0,1 use ModuleIn  (sensor near inner face, offset = 0.8015mm)
+#   layer  2   uses ModuleOut (sensor near outer face, offset = 4.500mm)
+
+OUTER_HALF_STACK = 5.303 / 2   # mm — half of total module stack thickness
 
 OUTER_LAYERS = [
-{'rc': 819.0,  'nphi': 184, 'drp': 0., 'drm': 5.5},
-{'rc': 1153.0, 'nphi': 256, 'drp': 0., 'drm': 5.5},
-{'rc': 1486.0, 'nphi': 328, 'drp': 0., 'drm': 5.5},
+    {'rc': 819.0,  'nphi': 184, 'drp': 0.0, 'drm': 5.5, 'sensor_offset': 0.8015},
+    {'rc': 1153.0, 'nphi': 256, 'drp': 0.0, 'drm': 5.5, 'sensor_offset': 0.8015},
+    {'rc': 1486.0, 'nphi': 328, 'drp': 0.0, 'drm': 5.5, 'sensor_offset': 4.500},
 ]
-OUTER_HALF_LENGTH = 15.05
 
 def buildOuterTrackerBarrelModules():
     modules = []
     for layer in OUTER_LAYERS:
-        rc, nphi, drp, drm = layer['rc'], layer['nphi'], layer['drp'], layer['drm']
+        rc   = layer['rc']
+        nphi = layer['nphi']
+        drp  = layer['drp']
+        drm  = layer['drm']
+        sensor_offset = layer['sensor_offset']
         for iphi in range(nphi):
-            phi = 2 * np.pi * iphi / nphi
-            r   = rc - drp if iphi % 2 == 0 else rc + drm
-            cx  = r * np.cos(phi)
-            cy  = r * np.sin(phi)
-            tx  = -np.sin(phi)
-            ty  =  np.cos(phi)
+            phi       = 2 * np.pi * iphi / nphi
+            r_nominal = (rc - drp) if iphi % 2 == 0 else (rc + drm)
+            r_sensor  = r_nominal - OUTER_HALF_STACK + sensor_offset
+            cx = r_sensor * np.cos(phi)
+            cy = r_sensor * np.sin(phi)
+            tx, ty = -np.sin(phi), np.cos(phi)
             modules.append({
-                'x0': cx - OUTER_HALF_LENGTH * tx,
-                'y0': cy - OUTER_HALF_LENGTH * ty,
-                'x1': cx + OUTER_HALF_LENGTH * tx,
-                'y1': cy + OUTER_HALF_LENGTH * ty,
+                'x0': cx - MODULE_HALF_LENGTH * tx,
+                'y0': cy - MODULE_HALF_LENGTH * ty,
+                'x1': cx + MODULE_HALF_LENGTH * tx,
+                'y1': cy + MODULE_HALF_LENGTH * ty,
             })
     return modules
 
+# ── Vertex Barrel ─────────────────────────────────────────────────────────────
+# Flat ladder staves (ZSegmentedPlanarTracker)
+# r = inner face of support; sensitive layer at r + SUPPORT_THICKNESS
+# offset = tangential shift of stave centre from radial direction
+# only innermost layer has a double-layer (inner + outer sensitive surface)
 
-SUPPORT_THICKNESS  = 0.140  # mm
-SENSITIVE_THICKNESS = 0.050  # mm
-DOUBLELAYER_GAP    = 2.0    # mm
+VERTEX_SUPPORT_THICKNESS  = 0.140  # mm
+VERTEX_SENSITIVE_THICKNESS = 0.050  # mm
+VERTEX_DOUBLELAYER_GAP     = 2.0    # mm
 
-# (r_inner_face, nstaves, width, offset)
-# sensitive layer sits at r + SUPPORT_THICKNESS (inner) or r + GAP + ... (outer)
 VERTEX_LAYERS = [
-    # layer 0+1: r1=30mm, 16 staves, width=13mm, offset=2mm
-    {'r': 30.0,  'nstaves': 16, 'width': 13.0, 'offset': 2.0},
-    # layer 2:   r2=51mm, 15 staves, width=23mm, offset=2mm  (no double layer in xml)
-    {'r': 51.0,  'nstaves': 15, 'width': 23.0, 'offset': 2.0},
-    # layer 4:   r3=74mm, 21 staves, width=24mm, offset=2mm
-    {'r': 74.0,  'nstaves': 21, 'width': 24.0, 'offset': 2.0},
-    # layer 6:   r4=102mm,29 staves, width=24mm, offset=2mm
-    {'r': 102.0, 'nstaves': 29, 'width': 24.0, 'offset': 2.0},
+    {'r':  30.0, 'nstaves': 16, 'width': 13.0, 'offset': 2.0, 'double': True},
+    {'r':  51.0, 'nstaves': 15, 'width': 23.0, 'offset': 2.0, 'double': False},
+    {'r':  74.0, 'nstaves': 21, 'width': 24.0, 'offset': 2.0, 'double': False},
+    {'r': 102.0, 'nstaves': 29, 'width': 24.0, 'offset': 2.0, 'double': False},
 ]
-
 
 def buildVertexBarrelModules():
     modules = []
-    for i_layer, layer in enumerate(VERTEX_LAYERS):
+    for layer in VERTEX_LAYERS:
         r, nstaves, width, offset = layer['r'], layer['nstaves'], layer['width'], layer['offset']
-
-        r_sens_inner = r + SUPPORT_THICKNESS
-        r_sens_outer = r + SUPPORT_THICKNESS + SENSITIVE_THICKNESS + DOUBLELAYER_GAP
-
-        # only innermost layer (i_layer==0) gets both; rest get inner only
-        radii = [r_sens_inner, r_sens_outer] if i_layer == 0 else [r_sens_inner]
-
+        r_inner = r + VERTEX_SUPPORT_THICKNESS
+        r_outer = r_inner + VERTEX_SENSITIVE_THICKNESS + VERTEX_DOUBLELAYER_GAP
+        radii   = [r_inner, r_outer] if layer['double'] else [r_inner]
+        half_w  = width / 2.0
         for r_sens in radii:
             for i in range(nstaves):
-                phi = 2 * np.pi * i / nstaves
-                rx, ry = np.cos(phi), np.sin(phi)
+                phi    = 2 * np.pi * i / nstaves
                 tx, ty = -np.sin(phi), np.cos(phi)
-                cx = r_sens * rx + offset * tx
-                cy = r_sens * ry + offset * ty
-                half_w = width / 2.0
+                cx = r_sens * np.cos(phi) + offset * tx
+                cy = r_sens * np.sin(phi) + offset * ty
                 modules.append({
                     'x0': cx - half_w * tx,
                     'y0': cy - half_w * ty,
                     'x1': cx + half_w * tx,
                     'y1': cy + half_w * ty,
                 })
-
     return modules
 
-def make_barrel_mask(x, y, modules, corridor_width=2.0):
+# ── Build all ─────────────────────────────────────────────────────────────────
+inner_modules  = buildInnerTrackerBarrelModules()
+outer_modules  = buildOuterTrackerBarrelModules()
+vertex_modules = buildVertexBarrelModules()
+
+print(f"Inner tracker: {len(inner_modules)} modules")
+print(f"Outer tracker: {len(outer_modules)} modules")
+print(f"Vertex barrel: {len(vertex_modules)} modules")
+
+# ── Mask function ─────────────────────────────────────────────────────────────
+def make_barrel_mask(x, y, modules, corridor_width=HALF_SENSITIVE):
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
     mask = np.zeros(len(x), dtype=bool)
@@ -256,10 +273,12 @@ def apply_material_map_hybrid(samples_dir, material_map, col_name, master_featur
         geom = r_side_layer_map_barrel[col_name]
 
         
-        if col_name in ["InnerTrackerBarrelCollection", "OuterTrackerBarrelCollection"]:
-            mask_tangent_coord_phi =  make_barrel_mask(loc_x, loc_y,modules_dir[col_name], corridor_width=2.0)
+        if col_name in ["InnerTrackerBarrelCollection"]:
+            mask_tangent_coord_phi =  make_barrel_mask(loc_x, loc_y,modules_dir[col_name], corridor_width=1.55)
+        if col_name in ["OuterTrackerBarrelCollection"]:
+            mask_tangent_coord_phi =  make_barrel_mask(loc_x, loc_y,modules_dir[col_name], corridor_width=1.9)
         elif col_name in ["VertexBarrelCollection"]:
-            mask_tangent_coord_phi =  make_barrel_mask(loc_x, loc_y,modules_dir[col_name], corridor_width=0.5)
+            mask_tangent_coord_phi =  make_barrel_mask(loc_x, loc_y,modules_dir[col_name], corridor_width=0.44)
 
         
     elif "Endcap" in col_name: 
