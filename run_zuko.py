@@ -60,6 +60,10 @@ parser.add_argument("--NUM_COND_INPUTS", type=int, default=0, help="Number of co
 parser.add_argument("--TRANSFORMS", type=int, default=3, help="Number of transforms ")
 parser.add_argument("--HIDDEN_FEATURES", type=str, default="32,32,32", help="Number of hidden features")
 parser.add_argument("--FREQS", type=int, default=3, help="Freqs for CNF")
+parser.add_argument("--BINS", type=int, default=16, help="Freqs for CNF")
+parser.add_argument("--DEGREE", type=int, default=3, help="Freqs for CNF")
+parser.add_argument("--POLYNOMIALS", type=int, default=4, help="Freqs for CNF")
+
 
 parser.add_argument("--PLOT_EPOCH_INTERVAL", type=int, default=10, help="Interval for plotting during training")
 parser.add_argument("--TRAIN_FLOW", action="store_true", help="Whether to train the flow")
@@ -167,9 +171,9 @@ if args.ZUKO_ID == "NSF":
 #elif args.ZUKO_ID == "MAF":
 #    flow = zuko.flows.MAF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
 elif args.ZUKO_ID == "NCSF":
-    flow = zuko.flows.NCSF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, bins=16).to(device)
+    flow = zuko.flows.NCSF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, bins=args.BINS).to(device)
 elif args.ZUKO_ID == "SOSPF":
-    flow = zuko.flows.SOSPF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, degree=4, polynomials=3).to(device)
+    flow = zuko.flows.SOSPF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, degree=args.DEGREE, polynomials=args.POLYNOMIALS).to(device)
 #elif args.ZUKO_ID == "NAF":
 #    flow = zuko.flows.NAF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
 elif args.ZUKO_ID == "UNAF":
