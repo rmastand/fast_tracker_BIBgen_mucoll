@@ -114,7 +114,7 @@ for i in range(X.shape[1]):
     if i in log_vars:
         bins_dict[i] = np.logspace(np.log10(0.9*np.min(X[:,i])), np.log10(1.1*np.max(X[:,i])), NUM_BINS) 
     else:
-        bins_dict[i] = np.linspace(np.min(X[:,i] - 3), np.max(X[:,i] + 3), NUM_BINS) 
+        bins_dict[i] = np.linspace(np.min(X[:,i] - 1), np.max(X[:,i] + 1), NUM_BINS) 
 
 
 fig_samp, axes_samp = plot_corner_hist_2d(

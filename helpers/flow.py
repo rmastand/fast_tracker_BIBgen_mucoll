@@ -14,5 +14,3 @@ def sample_from_flow(flow, N=None, x_context=None):
 
         return samples
 
-
-            

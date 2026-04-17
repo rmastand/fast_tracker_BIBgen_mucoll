@@ -114,3 +114,26 @@ def plot_corner_hist_2d(
     #plt.subplots_adjust(hspace=0, wspace=0)
 
     return fig, axes
+
+
+def make_2d_plots(data_array, labels):
+
+
+    fig, ax = plt.subplots(1, len(data_array), figsize = (10*len(data_array), 10))
+
+    
+
+    for i, key in enumerate(data_array.keys()):
+
+        coord0_lim = np.min(data_array["data"][0]), np.max(data_array["data"][0])
+        coord1_lim = np.min(data_array["data"][1]), np.max(data_array["data"][1])
+            
+        ax[i].scatter(data_array[key][0], data_array[key][1], s = 0.001)
+        ax[i].set_xlim(coord0_lim)
+        ax[i].set_ylim(coord1_lim)
+        ax[i].set_xlabel(labels[0])
+        ax[i].set_ylabel(labels[1])
+        ax[i].set_title(key)
+
+    plt.show()
+

@@ -15,6 +15,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
+from helpers.plotting import plot_hists_1d
 
 
 
@@ -42,6 +43,9 @@ def get_median_percentiles(x_array):
     x_upper = np.percentile(x_array, 84, axis=1)
 
     return x_median, x_lower, x_upper
+
+
+
 
 
 
@@ -279,6 +283,33 @@ def discriminate_data_from_samples(
     )
 
 
+def compute_feature_bdt_scores(data, samples, device="cuda", num_BDTs=3):
+    """
+    Train a 1D BDT per feature to discriminate data vs samples.
+    Returns dict: feature_index -> (auc_mean, auc_std)
+    """
+    results = {}
+
+    for i in range(data.shape[1]):
+        data_feat = data[:, i].reshape(-1, 1)
+        samples_feat = samples[:, i].reshape(-1, 1)
+
+        auc_mean, auc_std, *_ = discriminate_data_from_samples(
+            data_feat,
+            samples_feat,
+            num_BDTs,
+            "configs/bdt.yml",
+            model_type="bdt",
+            plot_losses=False,
+            device=device,
+            val_size=0.25,
+            plot_dir="."
+        )
+
+        results[i] = (auc_mean, auc_std)
+        print(f"Feature {i} BDT AUC: {auc_mean:.4f} ± {auc_std:.4f}")
+
+    return results
 
 
 def get_delta_R_neighbors(data_array, R, NN):
@@ -487,3 +518,120 @@ def get_delta_R_neighbors_kdtree(data_array, R, features):
     neighbor_counts = np.array([len(lst) - 1 for lst in neighbors_list], dtype=np.int64)
 
     return neighbor_counts
+
+
+def run_eval_suite_BDTs(
+        data, 
+        samples_dict, 
+        bins,
+        device,
+        num_BDTs=3, 
+        run_single_feature_BDTs=True, 
+        plot_suffix="",
+        log_vars=[],
+        feature_labels=None
+        ):
+
+    print(f"Len data: {len(data)}")
+
+    loc_scores_list = []
+    single_bdt_results = {key:{} for key in samples_dict.keys()}
+
+    scores_results = {key:{} for key in samples_dict.keys()}
+    X_plot_results = {key:{} for key in samples_dict.keys()}
+
+    for sample_key in samples_dict.keys():
+        loc_samples = samples_dict[sample_key]
+        print(f"Len samples {sample_key}: {len(loc_samples)}")
+
+
+        if run_single_feature_BDTs:
+            # Per-feature BDT evaluation
+            print("\nPer-feature BDT performance:")
+            bdt_feature_results = compute_feature_bdt_scores(data, loc_samples, device=device, num_BDTs=num_BDTs)
+            single_bdt_results[sample_key] = bdt_feature_results
+        # BDT
+        auc_mean, auc_std, best_epoch_list, max_epochs, bdt_list, samples_test, loc_scores = discriminate_data_from_samples(
+                                                data,
+                                                loc_samples,
+                                                num_BDTs,
+                                                "configs/bdt.yml",
+                                                model_type="bdt",
+                                                plot_losses=False,
+                                                device="cuda",
+                                                val_size = 0.25, 
+                                                plot_dir="."
+                                            )
+    
+        print(f"auc {auc_mean} \pm {auc_std}. best epoch {best_epoch_list} of {max_epochs}.\n")
+        loc_scores_list.append(loc_scores)
+        scores_results[sample_key] = loc_scores
+        X_plot_results[sample_key] = samples_test
+
+        X_plot = {"samples":  samples_test}
+        percentiles = [70, 80, 90, 99]
+        for p in percentiles:
+            X_plot[f"samples, top {p}%"] =  samples_test[loc_scores >= np.percentile(loc_scores, p)]
+    
+        plot_hists_1d({"data":data, **X_plot}, bins, log_dims=log_vars, labels=feature_labels)
+
+    
+        
+    plt.figure()
+    for i, sample_key in enumerate(samples_dict.keys()):
+              
+        plt.hist(loc_scores_list[i], bins = np.linspace(0, 1, 100), histtype = "step", density = True, label = sample_key)
+    plt.yscale("log")
+    plt.legend()
+    plt.xlabel("scores")
+    plt.ylabel("Density")
+    plt.show()
+
+
+    return single_bdt_results, scores_results, X_plot_results
+        
+
+
+def run_eval_suite_R(data, samples_dict, R_values, NUM_BINS, plot_suffix=""):
+
+        print(f"Len data: {len(data)}")
+
+        R_values_dict_samples = {R:[] for R in R_values}
+        R_values_dict_data = {R:0 for R in R_values}
+        R_values_bins = {R:0 for R in R_values}
+
+        for sample_key in samples_dict.keys():
+            loc_samples = samples_dict[sample_key]
+            print(f"Len samples {sample_key}: {len(loc_samples)}")
+
+            # Clustering
+            for R in R_values:
+                neighbor_counts_data = get_delta_R_neighbors_kdtree(data, R, FEATURES)
+                neighbor_counts_flow = get_delta_R_neighbors_kdtree(loc_samples, R, FEATURES)
+            
+                max_val = np.max(neighbor_counts_data)
+            
+                bin_spacing = int(max_val/NUM_BINS) + 1
+
+                R_values_dict_data[R] = neighbor_counts_data
+                R_values_dict_samples[R].append(neighbor_counts_flow)
+                R_values_bins[R] = max_val, bin_spacing
+            
+
+        for R in R_values:
+            plt.figure()
+            
+            for i, sample_key in enumerate(samples_dict.keys()):
+                
+                plt.hist(R_values_dict_samples[R][i], bins=np.arange(0, R_values_bins[R][0], R_values_bins[R][1]), histtype = "step", label = sample_key)
+            plt.hist(R_values_dict_data[R], bins=np.arange(0, R_values_bins[R][0], R_values_bins[R][1]), histtype = "step", label = "data")
+            plt.legend()
+            plt.xlabel(f"# neighbors within $\Delta$R $\leq$ {R}")
+            plt.ylabel("Count")
+            plt.savefig(f"figures/deltaR{R}{plot_suffix}.png")
+            plt.show()
+
+
+        
+        
+        

@@ -5,13 +5,16 @@ import pickle
 epsilon = 1e-12
 
 
+num_sectors = {
+    "InnerTrackerEndcapCollection": 26, 
+    "OuterTrackerEndcapCollection": 48, 
+    "VertexEndcapCollection": 16,
+}
+
 def load_in_data(collection_list, features, working_dir, training_frac, num_cond_features=0, feature_order=None, num_files=1):
         
     data = []
     context = []
-
-
-    
     
     for i, collection in enumerate(collection_list):
         for r in range(num_files):
@@ -31,16 +34,26 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
     if num_cond_features > 0:
         context = np.vstack(context)
     data[:,0] = np.log(data[:,0]) #preprocess the energy
-    
+    print
 
     if features == "rphi":
         r = np.sqrt(data[:, 1]**2 + data[:, 2]**2)
-        theta = np.arctan2(data[:, 2], data[:, 1])
+        phi = np.arctan2(data[:, 2], data[:, 1])
         data[:,1] = r
-        data[:,2] = theta
-        feature_labels = ["log($E$) [Gev]", "$r$", "$\phi$", "$z$", "$t$ [s]", "side", "layer"]
+        data[:,2] = phi
+
+        # delta_phi = 2*np.pi / num_sectors[collection]
+        # sector_index = np.floor(phi / delta_phi)
+        # sector_coord = sector_index * delta_phi
+        # phi_local = phi - sector_coord
+        # data[:,2] = phi_local
+        # sinphi = np.sin(phi)
+        # cosphi = np.cos(phi)
+        # # replace phi with sin and cos
+        # data = np.hstack([data[:,:2], sinphi[:, np.newaxis], cosphi[:, np.newaxis], data[:,3:]])
+        feature_labels = ["log($E$) [Gev]", "$r$", "$\phi$", "$z$", "$t$", "side", "layer", "module", "sensor"]
     else:
-        feature_labels = ["log($E$) [Gev]", "$x$", "$y$", "$z$", "$t$ [s]", "side", "layer"]
+        feature_labels = ["log($E$) [Gev]", "$x$", "$y$", "$z$", "$t$ [s]", "side", "layer", "module", "sensor"]
 
     X = np.hstack([data,  context]) if num_cond_features > 0 else data
 
@@ -85,7 +98,7 @@ def preprocess_data(X, flow_training_dir, ZUKO_ID, num_cond_features=0):
         X_to_preproc = X
 
     if ZUKO_ID in ["UNAF", "NCSF"]:
-        min_max_scaler = MinMaxScaler(feature_range=(-3,3))
+        min_max_scaler = MinMaxScaler(feature_range=(-np.pi,np.pi))
         X_preproc = min_max_scaler.fit_transform(X_to_preproc)
         with open(f"{flow_training_dir}/minmax", "wb") as ofile:
             pickle.dump(min_max_scaler, ofile)

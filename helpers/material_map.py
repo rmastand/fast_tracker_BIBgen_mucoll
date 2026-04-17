@@ -124,14 +124,6 @@ def buildVertexBarrelModules():
                 })
     return modules
 
-# ── Build all ─────────────────────────────────────────────────────────────────
-inner_modules  = buildInnerTrackerBarrelModules()
-outer_modules  = buildOuterTrackerBarrelModules()
-vertex_modules = buildVertexBarrelModules()
-
-print(f"Inner tracker: {len(inner_modules)} modules")
-print(f"Outer tracker: {len(outer_modules)} modules")
-print(f"Vertex barrel: {len(vertex_modules)} modules")
 
 # ── Mask function ─────────────────────────────────────────────────────────────
 def make_barrel_mask(x, y, modules, corridor_width=HALF_SENSITIVE):
