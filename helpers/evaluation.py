@@ -283,7 +283,7 @@ def discriminate_data_from_samples(
     )
 
 
-def compute_feature_bdt_scores(data, samples, device="cuda", num_BDTs=3):
+def compute_feature_bdt_scores(data, samples, device="cuda", num_BDTs=3, feature_labels=None):
     """
     Train a 1D BDT per feature to discriminate data vs samples.
     Returns dict: feature_index -> (auc_mean, auc_std)
@@ -307,10 +307,77 @@ def compute_feature_bdt_scores(data, samples, device="cuda", num_BDTs=3):
         )
 
         results[i] = (auc_mean, auc_std)
-        print(f"Feature {i} BDT AUC: {auc_mean:.4f} ± {auc_std:.4f}")
+        if feature_labels is not None:
+            print(f"Feature {feature_labels[i]} BDT AUC: {auc_mean:.4f} ± {auc_std:.4f}")
+        else:
+            print(f"Feature {i} BDT AUC: {auc_mean:.4f} ± {auc_std:.4f}")
 
     return results
 
+def compute_pairwise_bdt_scores(data, samples, device="cuda", num_BDTs=3, n_cond=1):
+    """
+    Train BDTs on all feature pairs, excluding cond-cond pairs.
+    Returns:
+        auc_matrix: (n_features, n_features)
+    """
+    n_features = data.shape[1]
+    auc_matrix = np.zeros((n_features, n_features))
+
+    cond_start = n_features - n_cond
+
+    # count only valid pairs
+    total_pairs = 0
+    for i in range(n_features):
+        for j in range(i, n_features):
+            if not (i >= cond_start and j >= cond_start):
+                total_pairs += 1
+
+    pbar = tqdm(total=total_pairs, desc="Pairwise BDTs (no cond-cond)")
+
+    for i in range(n_features):
+        for j in range(i, n_features):
+
+            # ❌ skip conditioning-conditioning pairs
+            if i >= cond_start and j >= cond_start:
+                continue
+
+            data_pair = data[:, [i, j]]
+            samples_pair = samples[:, [i, j]]
+
+            auc_mean, auc_std, *_ = discriminate_data_from_samples(
+                data_pair,
+                samples_pair,
+                num_BDTs,
+                "configs/bdt.yml",
+                model_type="bdt",
+                plot_losses=False,
+                device=device,
+                val_size=0.25,
+                plot_dir="."
+            )
+
+            auc_matrix[i, j] = auc_mean
+            auc_matrix[j, i] = auc_mean
+
+            pbar.update(1)
+
+    pbar.close()
+    return auc_matrix
+
+def plot_pairwise_auc_matrix(auc_matrix, feature_labels=None):
+    plt.figure(figsize=(8, 7))
+
+    im = plt.imshow(auc_matrix, vmin=0.5, vmax=np.max(auc_matrix), cmap="viridis")
+
+    n = auc_matrix.shape[0]
+    plt.xticks(range(n), feature_labels if feature_labels else range(n), rotation=90)
+    plt.yticks(range(n), feature_labels if feature_labels else range(n))
+
+    plt.title("Pairwise BDT AUC")
+    plt.colorbar(im, label="AUC")
+
+    plt.tight_layout()
+    plt.show()
 
 def get_delta_R_neighbors(data_array, R, NN):
     # Extract coordinates
@@ -524,12 +591,13 @@ def run_eval_suite_BDTs(
         data, 
         samples_dict, 
         bins,
+        n_cond,
         device,
         num_BDTs=3, 
         run_single_feature_BDTs=True, 
         plot_suffix="",
         log_vars=[],
-        feature_labels=None
+        feature_labels=None,
         ):
 
     print(f"Len data: {len(data)}")
@@ -548,8 +616,19 @@ def run_eval_suite_BDTs(
         if run_single_feature_BDTs:
             # Per-feature BDT evaluation
             print("\nPer-feature BDT performance:")
-            bdt_feature_results = compute_feature_bdt_scores(data, loc_samples, device=device, num_BDTs=num_BDTs)
+            bdt_feature_results = compute_feature_bdt_scores(data, loc_samples, device=device, num_BDTs=num_BDTs, feature_labels=feature_labels)
             single_bdt_results[sample_key] = bdt_feature_results
+
+
+            print("\nPairwise BDT performance:")
+            pairwise_auc = compute_pairwise_bdt_scores(data, loc_samples, device=device, num_BDTs=num_BDTs, n_cond=n_cond)
+            
+            plot_pairwise_auc_matrix(pairwise_auc, feature_labels)
+            
+            # store if you want
+            single_bdt_results[sample_key]["pairwise_auc"] = pairwise_auc
+            
+
         # BDT
         auc_mean, auc_std, best_epoch_list, max_epochs, bdt_list, samples_test, loc_scores = discriminate_data_from_samples(
                                                 data,
@@ -562,6 +641,18 @@ def run_eval_suite_BDTs(
                                                 val_size = 0.25, 
                                                 plot_dir="."
                                             )
+
+        print("\nFeature importances (full BDT):")
+
+        importances = np.array([bdt.feature_importances_ for bdt in bdt_list])
+        mean_importance = importances.mean(axis=0)
+        std_importance = importances.std(axis=0)
+        
+        for i, (mean, std) in enumerate(zip(mean_importance, std_importance)):
+            label = feature_labels[i] if feature_labels else f"Feature {i}"
+            print(f"{label}: {mean:.4f} ± {std:.4f}")
+
+    
     
         print(f"auc {auc_mean} \pm {auc_std}. best epoch {best_epoch_list} of {max_epochs}.\n")
         loc_scores_list.append(loc_scores)
