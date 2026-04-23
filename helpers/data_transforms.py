@@ -98,7 +98,7 @@ def preprocess_data(X, flow_training_dir, ZUKO_ID, num_cond_features=0):
         X_to_preproc = X
 
     if ZUKO_ID in ["UNAF", "NCSF"]:
-        min_max_scaler = MinMaxScaler(feature_range=(-np.pi,np.pi))
+        min_max_scaler = MinMaxScaler(feature_range=(-np.pi, np.pi))
         X_preproc = min_max_scaler.fit_transform(X_to_preproc)
         with open(f"{flow_training_dir}/minmax", "wb") as ofile:
             pickle.dump(min_max_scaler, ofile)
