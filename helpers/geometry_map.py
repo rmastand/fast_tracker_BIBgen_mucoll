@@ -53,17 +53,17 @@ def build_dist_tree_from_map(
 
     geom_map = defaultdict(list)  # collection -> (x,y,z,cellid0)
     
-    i = 0
     with open(path_to_geometry_map, "r", encoding="utf-8") as f:
         for line in f:
     
-            if line.startswith("("):
-                tup = eval(line)
+            if line[0] == "(":
+                #tup = eval(line)
+                tup = line.strip()[1:-1].split(",")
     
                 x = float(tup[7])
                 y = float(tup[8])
                 z = float(tup[9])
-                col_name = tup[0]
+                col_name = tup[0].strip().strip("'")
                 cellid0 = int(tup[6])
                 layer = int(tup[3])
                 geom_map[col_name].append((x, y, z, cellid0, layer))
