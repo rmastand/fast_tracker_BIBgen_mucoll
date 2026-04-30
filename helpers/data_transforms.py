@@ -11,6 +11,7 @@ num_sectors = {
     "VertexEndcapCollection": 16,
 }
 
+
 def load_in_data(collection_list, features, working_dir, training_frac, num_cond_features=0, feature_order=None, num_files=1):
         
     data = []
@@ -51,9 +52,9 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
         # cosphi = np.cos(phi)
         # # replace phi with sin and cos
         # data = np.hstack([data[:,:2], sinphi[:, np.newaxis], cosphi[:, np.newaxis], data[:,3:]])
-        feature_labels = ["log($E$) [Gev]", "$r$", "$\phi$", "$z$", "$t$", "side", "layer", "module", "sensor"]
+        feature_labels = ["log($E$) [Gev]", "$r$", "$\phi$", "$z$", "$t$", "system", "side", "layer", "module", "sensor"]
     else:
-        feature_labels = ["log($E$) [Gev]", "$x$", "$y$", "$z$", "$t$ [s]", "side", "layer", "module", "sensor"]
+        feature_labels = ["log($E$) [Gev]", "$x$", "$y$", "$z$", "$t$ [s]", "system", "side", "layer", "module", "sensor"]
 
     X = np.hstack([data,  context]) if num_cond_features > 0 else data
 
