@@ -331,3 +331,130 @@ def apply_material_map_hybrid(samples_dir, material_map, col_name, master_featur
 
     # --- final mask ---
     return mask_tangent_coord_phi & mask_geom
+
+
+
+def build_masked_datasets(data_dir, samples_dir, collections, NUM_COND_INPUTS, feature_indices_dict):
+
+    source_conditions = []
+    masked_flow_conditions = []
+    masked_indices_per_collection = []
+    masked_collection_ids = []
+
+    flow_samples_masked = {col_name: None for col_name in collections}
+
+
+    for i, col_name in enumerate(collections):
+    
+        mask = apply_material_map_hybrid(samples_dir, None, col_name, feature_indices_dict)
+        print(f"{col_name}: {100*sum(mask)/len(mask)}% of samples pass ({sum(mask)}, {len(mask)})")
+        flow_samples_masked[col_name] = samples_dir[col_name][mask]
+    
+        masked_idx = np.where(mask)[0]
+        masked_indices_per_collection.append(masked_idx) # get the locations that passed the mask
+        masked_collection_ids.append(np.full(len(masked_idx), i, dtype=int)) # get the integer corresponding to that collection
+
+    
+        source_conditions.append(np.concatenate([
+            np.full((data_dir[col_name].shape[0], 1), i, dtype=int),
+            data_dir[col_name][:, -NUM_COND_INPUTS:]
+        ], axis=1))
+        masked_flow_conditions.append(np.concatenate([
+            np.full((samples_dir[col_name][mask].shape[0], 1), i, dtype=int),
+            samples_dir[col_name][mask][:, -NUM_COND_INPUTS:]
+        ], axis=1))
+
+    # concatenate
+    source_conditions = np.concatenate(source_conditions, axis=0)
+    masked_flow_conditions = np.concatenate(masked_flow_conditions, axis=0)
+    masked_indices_global = np.concatenate(masked_indices_per_collection)
+    masked_collection_ids = np.concatenate(masked_collection_ids)
+
+
+    # concatenate all of the conditions
+    all_conditions = np.concatenate(
+        [source_conditions, masked_flow_conditions],
+        axis=0
+    )
+    
+    # Get global grouping
+    # unique_keys is the unique (system, side, layer, module, sensor) combinations
+    # inverse is the unique key index of that particular data point
+    # unique_keys[inverse] = all_conditions
+    unique_keys, inverse = np.unique(
+        all_conditions,
+        axis=0,
+        return_inverse=True
+    )
+
+    # Split inverse mapping back
+    n_source = len(source_conditions)
+    inv_source = inverse[:n_source]
+    inv_masked = inverse[n_source:]
+
+    # get occupancies of each (system, side, layer, module, sensor) combination
+    counts_source = np.bincount(inv_source, minlength=len(unique_keys)) # (num. cells, )
+    counts_masked = np.bincount(inv_masked, minlength=len(unique_keys)) # (num. cells, )
+
+        
+    valid = counts_masked > 0
+    ratios = counts_masked[valid] / counts_source[valid]
+    alpha = ratios.min()
+    print("alpha =", alpha)
+    
+    target_counts = np.floor(alpha * counts_source).astype(int)
+
+    order = np.argsort(inv_masked) # ( num. events, )
+    # sort all the samples by the group id. So now all the samples with the same group id are next to each other
+    sorted_groups = inv_masked[order] # ( num. events, )
+  
+    # chunk the samples with the same group id
+    split_points = np.flatnonzero(np.diff(sorted_groups)) + 1
+    grouped_indices = np.split(order, split_points)
+    group_ids = np.unique(inv_masked)
+    
+    # --- sample within each group ---
+    
+    chosen_indices = []
+    
+    for gid, inds in zip(group_ids, grouped_indices):
+        n_target = target_counts[gid]
+    
+        if n_target == 0:
+            continue
+    
+        if len(inds) < n_target:
+            n_target = len(inds)  # safety (shouldn't happen due to alpha)
+    
+        chosen = np.random.choice(inds, size=n_target, replace=False)
+        chosen_indices.append(chosen)
+    
+    chosen_indices = np.concatenate(chosen_indices)
+    
+    
+    # --- map back to original samples ---
+    
+    # masked_indices_global: indices into original per-collection arrays
+    # masked_collection_ids: which collection each masked sample came from
+    selected_masked_global_idx = masked_indices_global[chosen_indices]
+    selected_collection_ids = masked_collection_ids[chosen_indices]
+    
+    # --- build output dictionary with collection names ---
+    flow_samples_masked_stratified = {col_name: None for col_name in collections}
+    
+    for i, col_name in enumerate(collections):
+    
+        mask_i = selected_collection_ids == i
+        local_indices = selected_masked_global_idx[mask_i]
+    
+        flow_samples_masked_stratified[col_name] = samples_dir[col_name][local_indices]
+    
+    
+    # --- optional: sanity check ---
+    
+    for col_name in collections:
+        print(col_name, flow_samples_masked[col_name].shape, flow_samples_masked_stratified[col_name].shape)
+
+    return flow_samples_masked, flow_samples_masked_stratified
+
+    
