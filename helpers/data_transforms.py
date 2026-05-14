@@ -9,10 +9,11 @@ num_sectors = {
     "InnerTrackerEndcapCollection": 26, 
     "OuterTrackerEndcapCollection": 48, 
     "VertexEndcapCollection": 16,
+    "OuterTrackerBarrelCollection": 328,
 }
 
 
-def load_in_data(collection_list, features, working_dir, training_frac, num_cond_features=0, feature_order=None, num_files=1):
+def load_in_data(collection_list, features, working_dir, training_frac, num_cond_features=0, feature_order=None, num_files=1, use_local_phi=False):
         
     data = []
     context = []
@@ -43,16 +44,17 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
         data[:,1] = r
         data[:,2] = phi
 
-        # delta_phi = 2*np.pi / num_sectors[collection]
-        # sector_index = np.floor(phi / delta_phi)
-        # sector_coord = sector_index * delta_phi
-        # phi_local = phi - sector_coord
-        # data[:,2] = phi_local
-        # sinphi = np.sin(phi)
-        # cosphi = np.cos(phi)
-        # # replace phi with sin and cos
-        # data = np.hstack([data[:,:2], sinphi[:, np.newaxis], cosphi[:, np.newaxis], data[:,3:]])
-        feature_labels = ["log($E$) [Gev]", "$r$", "$\phi$", "$z$", "$t$", "system", "side", "layer", "module", "sensor"]
+        if use_local_phi:
+
+            delta_phi = 2*np.pi / num_sectors[collection]
+            sector_index = np.floor(phi / delta_phi)
+            sector_coord = sector_index * delta_phi
+            phi_local = phi - sector_coord
+            data[:,2] = phi_local*10
+            feature_labels = ["log($E$) [Gev]", "$r$", "$\phi$ (local)", "$z$", "$t$", "system", "side", "layer", "module", "sensor"]
+
+        else:
+            feature_labels = ["log($E$) [Gev]", "$r$", "$\phi$", "$z$", "$t$", "system", "side", "layer", "module", "sensor"]
     else:
         feature_labels = ["log($E$) [Gev]", "$x$", "$y$", "$z$", "$t$ [s]", "system", "side", "layer", "module", "sensor"]
 

@@ -68,6 +68,8 @@ parser.add_argument("--POLYNOMIALS", type=int, default=4, help="Freqs for CNF")
 parser.add_argument("--PLOT_EPOCH_INTERVAL", type=int, default=10, help="Interval for plotting during training")
 parser.add_argument("--TRAIN_FLOW", action="store_true", help="Whether to train the flow")
 parser.add_argument("--EVAL_FLOW", action="store_true", help="Whether to evaluate the flow after training")
+parser.add_argument("--PHI_LOCAL", action="store_true", help="Whether to evaluate the flow after training")
+
 parser.add_argument("--NUM_BDTS", type=int, default=5, help="For sample evaluation")
 
 args = parser.parse_args()
@@ -101,7 +103,7 @@ log_vars = []
 
 # %%
 FEATURE_ORDER = None if args.FEATURE_ORDER is None else [int(x) for x in args.FEATURE_ORDER.split(",")]
-X, feature_labels = load_in_data(collection_list, args.FEATURES, args.WORKING_DIR, args.TRAINING_FRAC, args.NUM_COND_INPUTS, feature_order=FEATURE_ORDER)
+X, feature_labels = load_in_data(collection_list, args.FEATURES, args.WORKING_DIR, args.TRAINING_FRAC, args.NUM_COND_INPUTS, feature_order=FEATURE_ORDER, use_local_phi=args.PHI_LOCAL)
 print(f"Data has shape {X.shape}")
 print("Feature labels:", feature_labels)
 NUM_FEATURES = X.shape[1] - args.NUM_COND_INPUTS
@@ -168,8 +170,8 @@ if args.ZUKO_ID == "NSF":
 #    flow = zuko.flows.GMM(NUM_FEATURES, args.NUM_COND_INPUTS, components=30, hidden_features=[256] * 5).to(device)
 #elif args.ZUKO_ID == "NICE":
 #    flow = zuko.flows.NICE(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
-#elif args.ZUKO_ID == "MAF":
-#    flow = zuko.flows.MAF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
+elif args.ZUKO_ID == "MAF":
+   flow = zuko.flows.MAF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
 elif args.ZUKO_ID == "NCSF":
     flow = zuko.flows.NCSF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, bins=args.BINS).to(device)
 elif args.ZUKO_ID == "SOSPF":

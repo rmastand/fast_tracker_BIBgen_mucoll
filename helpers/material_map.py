@@ -334,7 +334,7 @@ def apply_material_map_hybrid(samples_dir, material_map, col_name, master_featur
 
 
 
-def build_masked_datasets(data_dir, samples_dir, collections, NUM_COND_INPUTS, feature_indices_dict):
+def build_masked_datasets(data_dir, samples_dir, collections, NUM_COND_INPUTS, feature_indices_dict, stratify=True):
 
     source_conditions = []
     masked_flow_conditions = []
@@ -363,6 +363,10 @@ def build_masked_datasets(data_dir, samples_dir, collections, NUM_COND_INPUTS, f
             np.full((samples_dir[col_name][mask].shape[0], 1), i, dtype=int),
             samples_dir[col_name][mask][:, -NUM_COND_INPUTS:]
         ], axis=1))
+
+
+    if not stratify:
+        return flow_samples_masked, None
 
     # concatenate
     source_conditions = np.concatenate(source_conditions, axis=0)
