@@ -9,7 +9,7 @@ num_sectors = {
     "InnerTrackerEndcapCollection": 26, 
     "OuterTrackerEndcapCollection": 48, 
     "VertexEndcapCollection": 16,
-    "OuterTrackerBarrelCollection": 328,
+    "OuterTrackerBarrelCollection": 164,
 }
 
 
@@ -17,26 +17,31 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
         
     data = []
     context = []
+    layers = []
     
     for i, collection in enumerate(collection_list):
         for r in range(num_files):
 
+            
+            
             if num_cond_features == 0:
                 tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit_reco_{r}.npy")
+                
                 data.append(tmp_data[:int(len(tmp_data)*training_frac)])
             elif num_cond_features > 0:
                 tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit_conditional_reco_{r}.npy")
 
                 data.append(tmp_data[:int(len(tmp_data)*training_frac), :-num_cond_features])
                 context.append(tmp_data[:int(len(tmp_data)*training_frac), -num_cond_features:])
+                layers.append(tmp_data[:int(len(tmp_data)*training_frac),7])
                
         
     
     data = np.vstack(data)
+    layers = np.vstack(layers).reshape(-1)
     if num_cond_features > 0:
         context = np.vstack(context)
     data[:,0] = np.log(data[:,0]) #preprocess the energy
-    print
 
     if features == "rphi":
         r = np.sqrt(data[:, 1]**2 + data[:, 2]**2)
@@ -46,11 +51,24 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
 
         if use_local_phi:
 
-            delta_phi = 2*np.pi / num_sectors[collection]
-            sector_index = np.floor(phi / delta_phi)
-            sector_coord = sector_index * delta_phi
-            phi_local = phi - sector_coord
-            data[:,2] = phi_local*10
+            num_modules_per_layer = {0: 92, 1: 128, 2: 164}
+            for l in range(3):
+                layer_mask = (layers == l)
+                phi_l = phi[layer_mask]
+                n = num_modules_per_layer[l]
+                delta_phi = 2 * np.pi / n
+                sector_index = np.floor(phi_l / delta_phi).astype(int)
+                sector_coord = sector_index * delta_phi
+                phi_local = phi_l - sector_coord  # in [0, delta_phi)
+                data[layer_mask, 2] = phi_local / delta_phi * 0.1  # normalize to [0, 10)
+
+            import matplotlib.pyplot as plt
+            print(data[:, 2])
+            print(np.unique(layers))
+            plt.figure()
+            plt.hist(data[:, 2], bins = 100)
+            plt.savefig("test")
+                
             feature_labels = ["log($E$) [Gev]", "$r$", "$\phi$ (local)", "$z$", "$t$", "system", "side", "layer", "module", "sensor"]
 
         else:
