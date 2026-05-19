@@ -316,7 +316,7 @@ if args.EVAL_FLOW:
 
     eval_flow.load_state_dict(torch.load(f"{save_dir}/test.pt"))
 
-    num_samples_total = X.shape[0] 
+    num_samples_total = X_preproc.shape[0] 
     sample_batch_size = 8192
 
     samples_flow = []
@@ -329,7 +329,7 @@ if args.EVAL_FLOW:
 
         if args.NUM_COND_INPUTS > 0:
             context_to_sample = torch.tensor(
-                X[i:i+nn, -args.NUM_COND_INPUTS:], dtype=torch.float32
+                X_preproc[i:i+nn, -args.NUM_COND_INPUTS:], dtype=torch.float32
             ).to(device)
 
 

@@ -5,7 +5,7 @@ from matplotlib.colors import LogNorm
 
 
 def plot_hists_1d(data_dict, bins_dict, log_dims=[0], labels = None):
-    N_FEATURES = len(bins_dict.keys())
+    N_FEATURES = data_dict[list(data_dict.keys())[0]].shape[1]
     fig, ax = plt.subplots(1, N_FEATURES, figsize=(N_FEATURES*6, N_FEATURES))
     for i in range(N_FEATURES):
         for key in data_dict.keys():

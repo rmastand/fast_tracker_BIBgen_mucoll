@@ -22,29 +22,29 @@ HALF_SENSITIVE      = 0.050   # mm — half of 0.100mm sensitive Si layer
 # nphi_half * 2 = total modules per layer (staggered double ring)
 # dr = radial stagger between inner and outer ring
 
-INNER_LAYERS = [
-    {'rc': 127.0, 'nphi_half': 14, 'dr': 2.5},
-    {'rc': 340.0, 'nphi_half': 38, 'dr': 2.5},
-    {'rc': 554.0, 'nphi_half': 62, 'dr': 2.5},
-]
+INNER_LAYERS = {
+    0:{'rc': 127.0, 'nphi_half': 14, 'dr': 2.5, 'z': 481.6},
+    1:{'rc': 340.0, 'nphi_half': 38, 'dr': 2.5, 'z': 481.6},
+    2:{'rc': 554.0, 'nphi_half': 62, 'dr': 2.5, 'z': 692.3},
+}
 
-def buildInnerTrackerBarrelModules():
+def buildInnerTrackerBarrelModules(layer):
     modules = []
-    for layer in INNER_LAYERS:
-        rc, nphi_half, dr = layer['rc'], layer['nphi_half'], layer['dr']
-        nphi = nphi_half * 2
-        for iphi in range(nphi):
-            phi      = 2 * np.pi * iphi / nphi
-            r_sensor = rc if iphi % 2 == 0 else rc + dr
-            cx = r_sensor * np.cos(phi)
-            cy = r_sensor * np.sin(phi)
-            tx, ty = -np.sin(phi), np.cos(phi)
-            modules.append({
-                'x0': cx - MODULE_HALF_LENGTH * tx,
-                'y0': cy - MODULE_HALF_LENGTH * ty,
-                'x1': cx + MODULE_HALF_LENGTH * tx,
-                'y1': cy + MODULE_HALF_LENGTH * ty,
-            })
+    #for layer in INNER_LAYERS:
+    rc, nphi_half, dr = layer['rc'], layer['nphi_half'], layer['dr']
+    nphi = nphi_half * 2
+    for iphi in range(nphi):
+        phi      = 2 * np.pi * iphi / nphi
+        r_sensor = rc if iphi % 2 == 0 else rc + dr
+        cx = r_sensor * np.cos(phi)
+        cy = r_sensor * np.sin(phi)
+        tx, ty = -np.sin(phi), np.cos(phi)
+        modules.append({
+            'x0': cx - MODULE_HALF_LENGTH * tx,
+            'y0': cy - MODULE_HALF_LENGTH * ty,
+            'x1': cx + MODULE_HALF_LENGTH * tx,
+            'y1': cy + MODULE_HALF_LENGTH * ty,
+        })
     return modules
 
 # ── Outer Tracker Barrel ──────────────────────────────────────────────────────
@@ -56,33 +56,33 @@ def buildInnerTrackerBarrelModules():
 
 OUTER_HALF_STACK = 5.303 / 2   # mm — half of total module stack thickness
 
-OUTER_LAYERS = [
-    {'rc': 819.0,  'nphi': 184, 'drp': 0.0, 'drm': 5.5, 'sensor_offset': 0.8015},
-    {'rc': 1153.0, 'nphi': 256, 'drp': 0.0, 'drm': 5.5, 'sensor_offset': 0.8015},
-    {'rc': 1486.0, 'nphi': 328, 'drp': 0.0, 'drm': 5.5, 'sensor_offset': 4.500},
-]
+OUTER_LAYERS = {
+    0:{'rc': 819.0,  'nphi': 184, 'drp': 0.0, 'drm': 5.5, 'sensor_offset': 0.8015, 'z': 1249.15},
+    1:{'rc': 1153.0, 'nphi': 256, 'drp': 0.0, 'drm': 5.5, 'sensor_offset': 0.8015, 'z': 1249.15},
+    2:{'rc': 1486.0, 'nphi': 328, 'drp': 0.0, 'drm': 5.5, 'sensor_offset': 4.500, 'z': 1249.15},
+}
 
-def buildOuterTrackerBarrelModules():
+def buildOuterTrackerBarrelModules(layer):
     modules = []
-    for layer in OUTER_LAYERS:
-        rc   = layer['rc']
-        nphi = layer['nphi']
-        drp  = layer['drp']
-        drm  = layer['drm']
-        sensor_offset = layer['sensor_offset']
-        for iphi in range(nphi):
-            phi       = 2 * np.pi * iphi / nphi
-            r_nominal = (rc - drp) if iphi % 2 == 0 else (rc + drm)
-            r_sensor  = r_nominal - OUTER_HALF_STACK + sensor_offset
-            cx = r_sensor * np.cos(phi)
-            cy = r_sensor * np.sin(phi)
-            tx, ty = -np.sin(phi), np.cos(phi)
-            modules.append({
-                'x0': cx - MODULE_HALF_LENGTH * tx,
-                'y0': cy - MODULE_HALF_LENGTH * ty,
-                'x1': cx + MODULE_HALF_LENGTH * tx,
-                'y1': cy + MODULE_HALF_LENGTH * ty,
-            })
+    #for layer in OUTER_LAYERS:
+    rc   = layer['rc']
+    nphi = layer['nphi']
+    drp  = layer['drp']
+    drm  = layer['drm']
+    sensor_offset = layer['sensor_offset']
+    for iphi in range(nphi):
+        phi       = 2 * np.pi * iphi / nphi
+        r_nominal = (rc - drp) if iphi % 2 == 0 else (rc + drm)
+        r_sensor  = r_nominal - OUTER_HALF_STACK + sensor_offset
+        cx = r_sensor * np.cos(phi)
+        cy = r_sensor * np.sin(phi)
+        tx, ty = -np.sin(phi), np.cos(phi)
+        modules.append({
+            'x0': cx - MODULE_HALF_LENGTH * tx,
+            'y0': cy - MODULE_HALF_LENGTH * ty,
+            'x1': cx + MODULE_HALF_LENGTH * tx,
+            'y1': cy + MODULE_HALF_LENGTH * ty,
+        })
     return modules
 
 # ── Vertex Barrel ─────────────────────────────────────────────────────────────
@@ -95,38 +95,39 @@ VERTEX_SUPPORT_THICKNESS  = 0.140  # mm
 VERTEX_SENSITIVE_THICKNESS = 0.050  # mm
 VERTEX_DOUBLELAYER_GAP     = 2.0    # mm
 
-VERTEX_LAYERS = [
-    {'r':  30.0, 'nstaves': 16, 'width': 13.0, 'offset': 2.0, 'double': True},
-    {'r':  51.0, 'nstaves': 15, 'width': 23.0, 'offset': 2.0, 'double': False},
-    {'r':  74.0, 'nstaves': 21, 'width': 24.0, 'offset': 2.0, 'double': False},
-    {'r': 102.0, 'nstaves': 29, 'width': 24.0, 'offset': 2.0, 'double': False},
-]
+VERTEX_LAYERS = {
+    0:{'r':  30.0, 'nstaves': 16, 'width': 13.0, 'offset': 2.0, 'double': True, 'z':65},
+    1:{'r':  30.0, 'nstaves': 16, 'width': 13.0, 'offset': 2.0, 'double': True, 'z':65},
+    2:{'r':  51.0, 'nstaves': 15, 'width': 23.0, 'offset': 2.0, 'double': False, 'z':65},
+    4:{'r':  74.0, 'nstaves': 21, 'width': 24.0, 'offset': 2.0, 'double': False, 'z':65},
+    6:{'r': 102.0, 'nstaves': 29, 'width': 24.0, 'offset': 2.0, 'double': False, 'z':65},
+}
 
-def buildVertexBarrelModules():
+def buildVertexBarrelModules(layer):
     modules = []
-    for layer in VERTEX_LAYERS:
-        r, nstaves, width, offset = layer['r'], layer['nstaves'], layer['width'], layer['offset']
-        r_inner = r + VERTEX_SUPPORT_THICKNESS
-        r_outer = r_inner + VERTEX_SENSITIVE_THICKNESS + VERTEX_DOUBLELAYER_GAP
-        radii   = [r_inner, r_outer] if layer['double'] else [r_inner]
-        half_w  = width / 2.0
-        for r_sens in radii:
-            for i in range(nstaves):
-                phi    = 2 * np.pi * i / nstaves
-                tx, ty = -np.sin(phi), np.cos(phi)
-                cx = r_sens * np.cos(phi) + offset * tx
-                cy = r_sens * np.sin(phi) + offset * ty
-                modules.append({
-                    'x0': cx - half_w * tx,
-                    'y0': cy - half_w * ty,
-                    'x1': cx + half_w * tx,
-                    'y1': cy + half_w * ty,
-                })
+    #for layer in VERTEX_LAYERS:
+    r, nstaves, width, offset = layer['r'], layer['nstaves'], layer['width'], layer['offset']
+    r_inner = r + VERTEX_SUPPORT_THICKNESS
+    r_outer = r_inner + VERTEX_SENSITIVE_THICKNESS + VERTEX_DOUBLELAYER_GAP
+    radii   = [r_inner, r_outer] if layer['double'] else [r_inner]
+    half_w  = width / 2.0
+    for r_sens in radii:
+        for i in range(nstaves):
+            phi    = 2 * np.pi * i / nstaves
+            tx, ty = -np.sin(phi), np.cos(phi)
+            cx = r_sens * np.cos(phi) + offset * tx
+            cy = r_sens * np.sin(phi) + offset * ty
+            modules.append({
+                'x0': cx - half_w * tx,
+                'y0': cy - half_w * ty,
+                'x1': cx + half_w * tx,
+                'y1': cy + half_w * ty,
+            })
     return modules
 
 
 # ── Mask function ─────────────────────────────────────────────────────────────
-def make_barrel_mask(x, y, modules, corridor_width=HALF_SENSITIVE):
+def make_barrel_mask(x, y, z, modules, zmax, corridor_width=HALF_SENSITIVE):
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
     mask = np.zeros(len(x), dtype=bool)
@@ -137,6 +138,8 @@ def make_barrel_mask(x, y, modules, corridor_width=HALF_SENSITIVE):
         px = m['x0'] + t*dx
         py = m['y0'] + t*dy
         mask |= (x - px)**2 + (y - py)**2 <= corridor_width**2
+    mask &= (z <= zmax)
+    mask &= (z >= -zmax)
     return mask
 
 
@@ -162,10 +165,10 @@ def points_in_polygon(x, y, vertices):
 
     
 
-def make_polygonal_annulus_mask(x, y, z, disks, nsides=12, rotation_deg=90.0, z_tolerance=2.0, reflect=True):
+def make_polygonal_annulus_mask(x, y, z, disk, nsides=12, rotation_deg=90.0, z_tolerance=2.0, reflect=True):
     """
     Polygonal annulus mask — both inner and outer boundaries are polygons.
-    disks: list of {'z', 'rmin', 'rmax'}
+    disk:  {'z', 'rmin', 'rmax'}
     """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -173,53 +176,45 @@ def make_polygonal_annulus_mask(x, y, z, disks, nsides=12, rotation_deg=90.0, z_
 
     mask = np.zeros(len(x), dtype=bool)
 
-    for disk in disks:
-        # z_match = np.abs(z - disk['z']) <= z_tolerance
-        # if reflect:
-        #     z_match |= np.abs(z + disk['z']) <= z_tolerance
+    outer_verts = make_polygon_vertices(nsides, disk['rmax'], rotation_deg)
+    inner_verts = make_polygon_vertices(nsides, disk['rmin'], rotation_deg)
 
-        # if not z_match.any():
-        #     continue
+    in_outer = points_in_polygon(x, y, outer_verts)
+    in_inner = points_in_polygon(x, y, inner_verts)
 
-        outer_verts = make_polygon_vertices(nsides, disk['rmax'], rotation_deg)
-        inner_verts = make_polygon_vertices(nsides, disk['rmin'], rotation_deg)
-
-        in_outer = points_in_polygon(x, y, outer_verts)
-        in_inner = points_in_polygon(x, y, inner_verts)
-
-        mask |=  in_outer & ~in_inner
+    mask |=  in_outer & ~in_inner
 
     return mask
 
 # ── Disk definitions ──────────────────────────────────────────────────────────
 
-VERTEX_ENDCAP_DISKS = [
-    {'z': 80,   'rmin': 25,  'rmax': 112},
-    {'z': 82,   'rmin': 25,  'rmax': 112},
-    {'z': 120,  'rmin': 31,  'rmax': 112},
-    {'z': 122,  'rmin': 31,  'rmax': 112},
-    {'z': 200,  'rmin': 38,  'rmax': 112},
-    {'z': 202,  'rmin': 38,  'rmax': 112},
-    {'z': 280,  'rmin': 53,  'rmax': 112},
-    {'z': 282,  'rmin': 53,  'rmax': 112},
-]
+VERTEX_ENDCAP_DISKS = {
+    0:{'z': 80,   'rmin': 25,  'rmax': 112},
+    1:{'z': 82,   'rmin': 25,  'rmax': 112},
+    2:{'z': 120,  'rmin': 31,  'rmax': 112},
+    3:{'z': 122,  'rmin': 31,  'rmax': 112},
+    4:{'z': 200,  'rmin': 38,  'rmax': 112},
+    5:{'z': 202,  'rmin': 38,  'rmax': 112},
+    6:{'z': 280,  'rmin': 53,  'rmax': 112},
+    7:{'z': 282,  'rmin': 53,  'rmax': 112},
+}
 
-INNER_ENDCAP_DISKS = [
-    {'z': 524,  'rmin': 95,  'rmax': 405},
-    {'z': 808,  'rmin': 147, 'rmax': 555},
-    {'z': 1093, 'rmin': 190, 'rmax': 555},
-    {'z': 1377, 'rmin': 212, 'rmax': 555},
-    {'z': 1661, 'rmin': 237, 'rmax': 555},
-    {'z': 1946, 'rmin': 264, 'rmax': 555},
-    {'z': 2190, 'rmin': 284, 'rmax': 555},
-]
+INNER_ENDCAP_DISKS = {
+    0:{'z': 524,  'rmin': 95,  'rmax': 427},
+    1:{'z': 808,  'rmin': 147, 'rmax': 555},
+    2:{'z': 1093, 'rmin': 190, 'rmax': 555},
+    3:{'z': 1377, 'rmin': 212, 'rmax': 555},
+    4:{'z': 1661, 'rmin': 237, 'rmax': 555},
+    5:{'z': 1946, 'rmin': 264, 'rmax': 555},
+    6:{'z': 2190, 'rmin': 284, 'rmax': 555},
+}
 
-OUTER_ENDCAP_DISKS = [
-    {'z': 1310, 'rmin': 617.5, 'rmax': 1430.2},
-    {'z': 1617, 'rmin': 617.5, 'rmax': 1430.2},
-    {'z': 1883, 'rmin': 617.5, 'rmax': 1430.2},
-    {'z': 2190, 'rmin': 617.5, 'rmax': 1430.2},
-]
+OUTER_ENDCAP_DISKS = {
+    0:{'z': 1310, 'rmin': 617.5, 'rmax': 1430.2},
+    1:{'z': 1617, 'rmin': 617.5, 'rmax': 1430.2},
+    2:{'z': 1883, 'rmin': 617.5, 'rmax': 1430.2},
+    3:{'z': 2190, 'rmin': 617.5, 'rmax': 1430.2},
+}
 
 
 
@@ -255,15 +250,6 @@ r_side_layer_map_barrel = {
 
 
 
-modules_dir = {
-
-    "InnerTrackerBarrelCollection": buildInnerTrackerBarrelModules(),
-    "OuterTrackerBarrelCollection": buildOuterTrackerBarrelModules(),
-    "VertexBarrelCollection": buildVertexBarrelModules(),
-}
-
-
-
 
 
 def apply_material_map_hybrid(samples_dir, material_map, col_name, master_feature_indices_dict):
@@ -280,57 +266,105 @@ def apply_material_map_hybrid(samples_dir, material_map, col_name, master_featur
 
     loc_x = data[:, master_feature_indices_dict[col_name]["r"]]*np.cos(phi)
     loc_y = data[:, master_feature_indices_dict[col_name]["r"]]*np.sin(phi)
+    loc_z = data[:, master_feature_indices_dict[col_name]["z"]]
 
+
+    mask_geom = np.zeros(len(data), dtype=bool)
    
 
     if "Barrel" in col_name:
-        tangent_coord = data[:, master_feature_indices_dict[col_name]["r"]]
-        layer_coord = data[:, master_feature_indices_dict[col_name]["r"]]
-        geom = r_side_layer_map_barrel[col_name]
+        #tangent_coord = data[:, master_feature_indices_dict[col_name]["r"]]
+        #layer_coord = data[:, master_feature_indices_dict[col_name]["r"]]
+        #geom = r_side_layer_map_barrel[col_name]
 
-        
-        if col_name in ["InnerTrackerBarrelCollection"]:
-            mask_tangent_coord_phi =  make_barrel_mask(loc_x, loc_y,modules_dir[col_name], corridor_width=1.55)
-        if col_name in ["OuterTrackerBarrelCollection"]:
-            mask_tangent_coord_phi =  make_barrel_mask(loc_x, loc_y,modules_dir[col_name], corridor_width=1.9)
-        elif col_name in ["VertexBarrelCollection"]:
-            mask_tangent_coord_phi =  make_barrel_mask(loc_x, loc_y,modules_dir[col_name], corridor_width=0.44)
+        if col_name == "InnerTrackerBarrelCollection":
+            corridor_width = HALF_SENSITIVE #1.55
+            module_func = buildInnerTrackerBarrelModules
+            LAYERS = INNER_LAYERS
+        elif col_name == "OuterTrackerBarrelCollection":
+            corridor_width =  HALF_SENSITIVE #1.9
+            module_func = buildOuterTrackerBarrelModules
+            LAYERS = OUTER_LAYERS
+        elif col_name == "VertexBarrelCollection":
+            corridor_width =  HALF_SENSITIVE #0.44
+            module_func = buildVertexBarrelModules
+            LAYERS = VERTEX_LAYERS
+
+
+        layer_indices = list(LAYERS.keys())
+        for l in layer_indices:
+            idx = layer_id == l
+            modules = module_func(LAYERS[l])
+           
+            mask_tangent_coord_phi = make_barrel_mask(loc_x[idx], loc_y[idx], loc_z[idx], modules, LAYERS[l]['z'], corridor_width=corridor_width) 
+            mask_geom[idx] = mask_tangent_coord_phi
 
         
     elif "Endcap" in col_name: 
-        tangent_coord = data[:, master_feature_indices_dict[col_name]["r"]] 
-        layer_coord = data[:, master_feature_indices_dict[col_name]["z"]]
-        geom = z_side_layer_map_endcaps[col_name]
+        # tangent_coord = data[:, master_feature_indices_dict[col_name]["r"]] 
+        # layer_coord = data[:, master_feature_indices_dict[col_name]["z"]]
+        # layer_id = data[:, master_feature_indices_dict[col_name]["layer"]]
 
         if col_name == "InnerTrackerEndcapCollection":
-            mask_tangent_coord_phi = make_polygonal_annulus_mask(loc_x, loc_y, None, INNER_ENDCAP_DISKS, z_tolerance=None, nsides=26)
+            DISKS, nsides = INNER_ENDCAP_DISKS, 26
+            rotation_deg = 90.0
         elif col_name == "OuterTrackerEndcapCollection":
-            mask_tangent_coord_phi = make_polygonal_annulus_mask(loc_x, loc_y, None, OUTER_ENDCAP_DISKS, z_tolerance=None, nsides=48, rotation_deg=3.75)
+            DISKS, nsides = OUTER_ENDCAP_DISKS, 48
+            rotation_deg = 3.75
         elif col_name == "VertexEndcapCollection":
-            mask_tangent_coord_phi = make_polygonal_annulus_mask(loc_x, loc_y, None, VERTEX_ENDCAP_DISKS, z_tolerance=None, nsides=16)
-         
+            DISKS, nsides = VERTEX_ENDCAP_DISKS, 16
+            rotation_deg = 90.0
+
+        num_layers = len(list(DISKS.keys()))
+        mask_geom = np.zeros(len(data), dtype=bool)
+
+        for l in range(num_layers):
+
+            idx = layer_id == l
+            mask_tangent_coord_phi = make_polygonal_annulus_mask(loc_x[idx], loc_y[idx], None, DISKS[l], z_tolerance=None, nsides=nsides, rotation_deg = rotation_deg)
+            mask_geom[idx] = mask_tangent_coord_phi
 
 
     # Define the geometric map (as a function of layer)
-    mask_geom = np.zeros(len(data), dtype=bool)
+    #mask_geom = np.zeros(len(data), dtype=bool)
 
-    for (s, l), layer_coord_dict in geom.items():
-        idx = (side == s) & (layer_id == l)
+    # idx = (side != "a")
 
-        if not np.any(idx):
-            continue
+    # if np.any(idx):
+    #     layer_coord_vals = layer_coord[idx]
+    #     layer_coord_mask_local = np.zeros_like(layer_coord_vals, dtype=bool)
+    
+    #     # accumulate all valid ranges across all layers
+    #     for (_, _), layer_coord_dict in geom.items():
+    #         for start, stop in zip(
+    #             layer_coord_dict["starts"],
+    #             layer_coord_dict["stops"]
+    #         ):
+    #             layer_coord_mask_local |= (
+    #                 (layer_coord_vals >= start)
+    #                 & (layer_coord_vals <= stop)
+    #             )
+    
+    #     mask_geom[idx] = layer_coord_mask_local
 
-        layer_coord_vals = layer_coord[idx]
 
-        layer_coord_mask_local = np.zeros_like(layer_coord_vals, dtype=bool)
+    # for (s, l), layer_coord_dict in geom.items():
+    #     idx = (side == s) & (layer_id == l)
 
-        for start, stop in zip(layer_coord_dict["starts"], layer_coord_dict["stops"]):
-            layer_coord_mask_local |= (layer_coord_vals >= start) & (layer_coord_vals <= stop)
+    #     if not np.any(idx):
+    #         continue
 
-        mask_geom[idx] = layer_coord_mask_local
+    #     layer_coord_vals = layer_coord[idx]
+
+    #     layer_coord_mask_local = np.zeros_like(layer_coord_vals, dtype=bool)
+
+    #     for start, stop in zip(layer_coord_dict["starts"], layer_coord_dict["stops"]):
+    #         layer_coord_mask_local |= (layer_coord_vals >= start) & (layer_coord_vals <= stop)
+
+    #     mask_geom[idx] = layer_coord_mask_local
 
     # --- final mask ---
-    return mask_tangent_coord_phi & mask_geom
+    return mask_geom
 
 
 

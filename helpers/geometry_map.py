@@ -19,7 +19,7 @@ def make_geometry_map(
     
         df_col = source_df[source_df["collection"] == collection_name]
         
-        for i in tqdm(range(num_events_per_col)):
+        for i in tqdm(range(min(num_events_per_col, len(df_col)))):
         
             event = df_col.iloc[i]
         
@@ -45,27 +45,52 @@ def make_geometry_map(
             f.write(str(cell_tuple) + "\n")
     
     print(f"Saved {len(geometry_map)} unique hits to {save_path}.txt")
-    
+
+
+import re
+
+def parse_numeric(s):
+    s = s.strip()
+
+    # Remove numpy scalar wrappers:
+    # np.float64(123.4) -> 123.4
+    # np.int64(3) -> 3
+    s = re.sub(r"np\.\w+\((.*?)\)", r"\1", s)
+
+    # Decide int vs float
+    try:
+        return int(s)
+    except ValueError:
+        return float(s)
+
+        
 
 def build_dist_tree_from_map(
     path_to_geometry_map,
 ):
 
     geom_map = defaultdict(list)  # collection -> (x,y,z,cellid0)
+    i = 0
     
     with open(path_to_geometry_map, "r", encoding="utf-8") as f:
         for line in f:
+            i += 1
+            if i % 100_000 == 0:
+                print(i)
+            
     
             if line[0] == "(":
                 #tup = eval(line)
                 tup = line.strip()[1:-1].split(",")
     
-                x = float(tup[7])
-                y = float(tup[8])
-                z = float(tup[9])
                 col_name = tup[0].strip().strip("'")
-                cellid0 = int(tup[6])
-                layer = int(tup[3])
+
+                x = parse_numeric(tup[7])
+                y = parse_numeric(tup[8])
+                z = parse_numeric(tup[9])
+                
+                cellid0 = parse_numeric(tup[6])
+                layer = parse_numeric(tup[3])
                 geom_map[col_name].append((x, y, z, cellid0, layer))
     
     print(
