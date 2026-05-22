@@ -496,3 +496,105 @@ def build_masked_datasets(data_dir, samples_dir, collections, NUM_COND_INPUTS, f
     return flow_samples_masked, flow_samples_masked_stratified
 
     
+
+
+
+
+import torch
+import torch.nn.functional as F
+import numpy as np
+
+def torch_barrel_material_penalty(
+    x_phys,
+    col_name,
+    feature_indices_dict,
+    softness=1.0,
+):
+    """
+    Differentiable material-map penalty for barrel collections.
+
+    x_phys must be a torch tensor in physical coordinates.
+    Returns: scalar penalty.
+    """
+
+    r_idx = feature_indices_dict[col_name]["r"]
+    phi_idx = feature_indices_dict[col_name]["phi"]
+    z_idx = feature_indices_dict[col_name]["z"]
+    layer_idx = feature_indices_dict[col_name]["layer"]
+
+    r = x_phys[:, r_idx]
+    phi = x_phys[:, phi_idx]
+    z = x_phys[:, z_idx]
+    layer = x_phys[:, layer_idx].round().long()
+
+    x = r * torch.cos(phi)
+    y = r * torch.sin(phi)
+
+    device = x_phys.device
+    dtype = x_phys.dtype
+
+    if col_name == "InnerTrackerBarrelCollection":
+        LAYERS = INNER_LAYERS
+        module_func = buildInnerTrackerBarrelModules
+        corridor_width = HALF_SENSITIVE
+    elif col_name == "OuterTrackerBarrelCollection":
+        LAYERS = OUTER_LAYERS
+        module_func = buildOuterTrackerBarrelModules
+        corridor_width = HALF_SENSITIVE
+    elif col_name == "VertexBarrelCollection":
+        LAYERS = VERTEX_LAYERS
+        module_func = buildVertexBarrelModules
+        corridor_width = HALF_SENSITIVE
+    else:
+        raise ValueError(f"{col_name} is not a barrel collection")
+
+    penalties = []
+
+    for l, layer_info in LAYERS.items():
+        idx = layer == l
+        if not torch.any(idx):
+            continue
+
+        x_l = x[idx]
+        y_l = y[idx]
+        z_l = z[idx]
+
+        modules = module_func(layer_info)
+
+        x0 = torch.tensor([m["x0"] for m in modules], device=device, dtype=dtype)
+        y0 = torch.tensor([m["y0"] for m in modules], device=device, dtype=dtype)
+        x1 = torch.tensor([m["x1"] for m in modules], device=device, dtype=dtype)
+        y1 = torch.tensor([m["y1"] for m in modules], device=device, dtype=dtype)
+
+        dx = x1 - x0
+        dy = y1 - y0
+        len_sq = dx**2 + dy**2
+
+        # Shape: [N_layer, N_modules]
+        t = ((x_l[:, None] - x0[None, :]) * dx[None, :]
+           + (y_l[:, None] - y0[None, :]) * dy[None, :]) / len_sq[None, :]
+
+        t = torch.clamp(t, 0.0, 1.0)
+
+        px = x0[None, :] + t * dx[None, :]
+        py = y0[None, :] + t * dy[None, :]
+
+        dist_xy = torch.sqrt((x_l[:, None] - px)**2 + (y_l[:, None] - py)**2 + 1e-12)
+        min_dist_xy = dist_xy.min(dim=1).values
+
+        # positive means outside the sensitive corridor
+        outside_xy = min_dist_xy - corridor_width
+
+        # positive means outside allowed z extent
+        outside_z = torch.abs(z_l) - layer_info["z"]
+
+        # smooth ReLU: ~0 inside, grows outside
+        penalty_l = F.softplus(outside_xy / softness) * softness
+        penalty_l = penalty_l + F.softplus(outside_z / softness) * softness
+
+        penalties.append(penalty_l)
+
+    if len(penalties) == 0:
+        return torch.tensor(0.0, device=device, dtype=dtype)
+
+    return torch.cat(penalties).mean()

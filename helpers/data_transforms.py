@@ -62,12 +62,21 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
                 phi_local = phi_l - sector_coord  # in [0, delta_phi)
                 data[layer_mask, 2] = phi_local / delta_phi * 0.1  # normalize to [0, 10)
 
-            import matplotlib.pyplot as plt
-            print(data[:, 2])
-            print(np.unique(layers))
-            plt.figure()
-            plt.hist(data[:, 2], bins = 100)
-            plt.savefig("test")
+            # import matplotlib.pyplot as plt
+            # print(data[:, 2])
+            # print(np.unique(layers))
+            # plt.figure()
+            # plt.hist(data[:, 2], bins = 100)
+            # plt.savefig("test")
+
+            # x = r*np.cos(data[:, 2])
+            # y = r*np.sin(data[:, 2])
+
+            # plt.figure(figsize=(10,10))
+            # plt.scatter(x, y, s = 0.01)
+            # plt.xlim(700,1600)
+            # plt.ylim(-50,200)
+            # plt.savefig("test2")
                 
             feature_labels = ["log($E$) [Gev]", "$r$", "$\phi$ (local)", "$z$", "$t$", "system", "side", "layer", "module", "sensor"]
 
@@ -134,7 +143,6 @@ def preprocess_data(X, flow_training_dir, ZUKO_ID, num_cond_features=0):
 
     
     
-
     return np.hstack([X_preproc, X_context]) if num_cond_features > 0 else X_preproc
 
 
@@ -164,7 +172,6 @@ def inverse_preprocess_data(X_preproc, flow_training_dir, ZUKO_ID, num_cond_feat
         X = standard_scaler.inverse_transform(X_to_unpreproc)
         
     
-
     return np.hstack([X, X_context]) if num_cond_features > 0 else X
 
 def unscale_mass(scaled_x, SB_left, SB_right):
@@ -189,3 +196,45 @@ def bootstrap_array(data_array, seed):
     indices_to_take = np.random.choice(range(data_array.shape[0]), size = data_array.shape[0], replace = True) 
     return data_array[indices_to_take]
 
+
+
+
+def inverse_preprocess_data_torch(X_preproc, flow_training_dir, ZUKO_ID, num_cond_features=0):
+    import torch
+
+    if num_cond_features > 0:
+        X_to_unpreproc = X_preproc[:, :-num_cond_features]
+        X_context = X_preproc[:, -num_cond_features:]
+    else:
+        X_to_unpreproc = X_preproc
+        X_context = None
+
+    device = X_preproc.device
+    dtype = X_preproc.dtype
+
+    if ZUKO_ID in ["UNAF", "NCSF"]:
+        with open(f"{flow_training_dir}/minmax", "rb") as ifile:
+            scaler = pickle.load(ifile)
+
+        data_min = torch.tensor(scaler.data_min_, device=device, dtype=dtype)
+        data_max = torch.tensor(scaler.data_max_, device=device, dtype=dtype)
+
+        feature_min = -np.pi
+        feature_max = np.pi
+
+        X = (X_to_unpreproc - feature_min) / (feature_max - feature_min)
+        X = X * (data_max - data_min) + data_min
+
+    else:
+        with open(f"{flow_training_dir}/standard", "rb") as ifile:
+            scaler = pickle.load(ifile)
+
+        mean = torch.tensor(scaler.mean_, device=device, dtype=dtype)
+        scale = torch.tensor(scaler.scale_, device=device, dtype=dtype)
+
+        X = X_to_unpreproc * scale + mean
+
+    if num_cond_features > 0:
+        return torch.cat([X, X_context], dim=1)
+
+    return X

@@ -26,11 +26,16 @@ import yaml
 import wandb
 import zuko
 from helpers.models.DNN import count_parameters
-from helpers.data_transforms import preprocess_data, inverse_preprocess_data, load_in_data
+from helpers.data_transforms import (
+    preprocess_data,
+    inverse_preprocess_data,
+    inverse_preprocess_data_torch,
+    load_in_data,
+)
 from helpers.evaluation import get_kl_dist, discriminate_data_from_samples
 from helpers.flow import sample_from_flow
 plt.style.use("../science.mplstyle")
-
+from helpers.material_map import torch_barrel_material_penalty
 
 # %%
 from helpers.plotting import plot_hists_1d, plot_corner_hist_2d
@@ -41,6 +46,17 @@ from helpers.plotting import plot_hists_1d, plot_corner_hist_2d
 BIN_BOUND = 5
 NUM_BINS = 100
 NUM_FEATURES = 5
+
+feature_indices_dict = {
+    "InnerTrackerBarrelCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
+    "InnerTrackerEndcapCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
+    "OuterTrackerBarrelCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
+    "OuterTrackerEndcapCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
+    "VertexBarrelCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
+    "VertexEndcapCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
+}
+
+lambda_material = 0.1
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--ZUKO_ID", type=str, default="NSF", help="Zuko model ID")
@@ -198,6 +214,96 @@ print(f"Number of trainable parameters: {num_params}")
 wandb.log({"num_trainable_params": num_params})
 wandb.run.summary["num_trainable_params"] = num_params
 
+
+def run_training_step(data_loader, is_val_step=False):
+    flow.eval() if is_val_step else flow.train()
+
+    text_desc = "val" if is_val_step else "train"
+    losses_ll, losses_mmap, losses_total = [], [], []
+
+    pbar = tqdm(data_loader, desc=f"{text_desc} batches", leave=False)
+
+    for x in pbar:
+        if not is_val_step:
+            optimizer.zero_grad()
+
+        x = x.to(device).float()
+
+        if args.NUM_COND_INPUTS > 0:
+            x_data = x[:, :-args.NUM_COND_INPUTS]
+            x_context = x[:, -args.NUM_COND_INPUTS:]
+            dist = flow(x_context)
+            loss_ll = -dist.log_prob(x_data).mean()
+        else:
+            x_data = x
+            x_context = None
+            dist = flow()
+            loss_ll = -dist.log_prob(x_data).mean()
+
+        # One generated sample per batch item.
+        if hasattr(dist, "rsample"):
+            x_gen_preproc = dist.rsample()
+        else:
+            x_gen_preproc = dist.sample()
+
+        if args.NUM_COND_INPUTS > 0:
+            x_gen_preproc_full = torch.cat([x_gen_preproc, x_context], dim=1)
+        else:
+            x_gen_preproc_full = x_gen_preproc
+
+        finite_mask = torch.isfinite(x_gen_preproc_full).all(dim=1)
+
+        if finite_mask.any():
+            x_gen_preproc_full_finite = x_gen_preproc_full[finite_mask]
+
+            x_gen_phys = inverse_preprocess_data_torch(
+                x_gen_preproc_full_finite,
+                save_dir,
+                args.ZUKO_ID,
+                args.NUM_COND_INPUTS,
+            )
+
+            finite_phys_mask = torch.isfinite(x_gen_phys).all(dim=1)
+            x_gen_phys = x_gen_phys[finite_phys_mask]
+
+            if "Barrel" in collection_list[0] and len(x_gen_phys) > 0:
+                material_loss = torch_barrel_material_penalty(
+                    x_gen_phys,
+                    collection_list[0],
+                    feature_indices_dict,
+                    softness=1.0,
+                )
+            else:
+                material_loss = torch.zeros((), device=device)
+        else:
+            material_loss = torch.zeros((), device=device)
+
+        bad_frac = 1.0 - finite_mask.float().mean().item()
+
+        total_loss = loss_ll + lambda_material * material_loss
+
+        if not is_val_step:
+            total_loss.backward()
+            torch.nn.utils.clip_grad_norm_(flow.parameters(), 5.0)
+            optimizer.step()
+
+        losses_ll.append(loss_ll.item())
+        losses_mmap.append(material_loss.item())
+        losses_total.append(total_loss.item())
+        if not is_val_step:
+            wandb.log({f"{text_desc}/bad_sample_frac": bad_frac})
+
+        pbar.set_postfix(loss=f"{total_loss.item():.3e}")
+
+    return {
+        f"{text_desc}/ll": np.mean(losses_ll),
+        f"{text_desc}/mmap": np.mean(losses_mmap),
+        f"{text_desc}/total": np.mean(losses_total),
+    }
+   
+
+
+
 if args.TRAIN_FLOW:
     print("Training flow...")
 
@@ -211,85 +317,57 @@ if args.TRAIN_FLOW:
 
     for k in range(args.NUM_EPOCHS):
 
-        epoch_losses_train, epoch_losses_val = [], []
+        epoch_losses_train_ll, epoch_losses_val_ll = [], []
+        epoch_losses_train_mask, epoch_losses_val_mask = [], []
+        epoch_losses_train_total, epoch_losses_val_total = [], []
 
-        # TRAINING LOOP
-        pbar = tqdm(train_loader, desc="Train batches", leave=False, )
-        for x in pbar:
-            optimizer.zero_grad()
+        train_losses = run_training_step(train_loader, is_val_step=False)
 
-            x = x.to(device).float()
-           
-            if args.NUM_COND_INPUTS > 0:
-                x_data = x[:,:-args.NUM_COND_INPUTS]
-                x_context = x[:,-args.NUM_COND_INPUTS:]
-                loss = -flow(x_context).log_prob(x_data).mean()
-            else:
-                loss = -flow().log_prob(x).mean()
-            
-
-        
-            epoch_losses_train.append(loss.item())
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(flow.parameters(), 5.0)
-            optimizer.step()
-            pbar.set_postfix(loss=f"{loss.item():.3e}, epoch {k}")
-
-        losses_train.append(np.mean(epoch_losses_train))
-
-        # VALIDATION LOOP
-        pbar = tqdm(val_loader, desc="Val batches", leave=False, )
-        for x in pbar:
-
-            x = x.to(device).float()
-            with torch.no_grad():
-                if args.NUM_COND_INPUTS > 0:
-                    x_data = x[:,:-args.NUM_COND_INPUTS]
-                    x_context = x[:,-args.NUM_COND_INPUTS:]
-                    loss = -flow(x_context).log_prob(x_data).mean()
-                else:
-                    loss = -flow().log_prob(x).mean()
-            
-        
-            epoch_losses_val.append(loss.item())
-            pbar.set_postfix(loss=f"{loss.item():.3e}, epoch {k}")
-
-        
-        losses_val.append(np.mean(epoch_losses_val))
+        with torch.no_grad():
+            val_losses = run_training_step(val_loader, is_val_step=True)
 
         wandb.log({
             "epoch": k,
-            "train_loss": losses_train[-1],
-            "val_loss": losses_val[-1],
+            **train_losses,
+            **val_losses,
         })
         
-        if losses_val[-1] < best_val_loss:
-            best_val_loss = losses_val[-1]
-            #print("new best val loss", losses_val[-1])
-            
-        torch.save(flow.state_dict(), f"{save_dir}/test.pt")
+        losses_train.append(train_losses["train/total"])
+        losses_val.append(val_losses["val/total"])
+        
+        if val_losses["val/total"] < best_val_loss:
+            best_val_loss = val_losses["val/total"]
+            torch.save(flow.state_dict(), f"{save_dir}/test.pt")
 
         if (k + 1) % args.PLOT_EPOCH_INTERVAL == 0:
+            flow.eval()
         
-            plt.figure()
-            plt.plot(losses_train, label="train")
-            plt.plot(losses_val, label="val")
-            plt.xlabel("Epoch")
-            plt.ylabel("Loss")
-            plt.legend()
-            plt.savefig(f"{save_dir}/losses")
-            plt.close()
-
-            factor = 5
+            x_plot = next(iter(val_loader)).to(device).float()
+        
             if args.NUM_COND_INPUTS > 0:
-                context_to_sample = x_context.repeat_interleave(factor, dim=0)   # (2N, C)
-                
-            samples = sample_from_flow(flow, N=factor*len(x_data), x_context=context_to_sample if args.NUM_COND_INPUTS > 0 else None)
-
-            
-                
-            loc_data_dict = {"data": inverse_preprocess_data( x.detach().cpu().numpy() , save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS),
-                    "generated": inverse_preprocess_data( samples , save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS)}
+                x_plot_data = x_plot[:, :-args.NUM_COND_INPUTS]
+                x_plot_context = x_plot[:, -args.NUM_COND_INPUTS:]
+                factor = 5
+                context_to_sample = x_plot_context.repeat_interleave(factor, dim=0)
+                samples = sample_from_flow(flow, N=factor * len(x_plot_data), x_context=context_to_sample)
+            else:
+                factor = 5
+                samples = sample_from_flow(flow, N=factor * len(x_plot))
+        
+            loc_data_dict = {
+                "data": inverse_preprocess_data(
+                    x_plot.detach().cpu().numpy(),
+                    save_dir,
+                    args.ZUKO_ID,
+                    args.NUM_COND_INPUTS,
+                ),
+               "generated": inverse_preprocess_data(
+                    samples,
+                    save_dir,
+                    args.ZUKO_ID,
+                    args.NUM_COND_INPUTS,
+                ),
+            }
             plot_hists_1d(loc_data_dict, bins_dict, log_dims=log_vars, labels=feature_labels)
             plt.savefig(f"{save_dir}/hists")
             plt.close()
@@ -407,3 +485,8 @@ if args.EVAL_FLOW:
 
 wandb.finish()
     # %%
+
+
+
+
+
