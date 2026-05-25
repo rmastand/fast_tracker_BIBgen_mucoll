@@ -56,7 +56,7 @@ feature_indices_dict = {
     "VertexEndcapCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
 }
 
-lambda_material = 0.1
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--ZUKO_ID", type=str, default="NSF", help="Zuko model ID")
@@ -91,6 +91,7 @@ parser.add_argument("--NUM_BDTS", type=int, default=5, help="For sample evaluati
 args = parser.parse_args()
 
 
+lambda_material = 0.1 / args.BATCH_SIZE
 
 # %%
 save_dir = f"{args.WORKING_DIR}/zuko_outputs/{args.ZUKO_ID}/{args.NAME}"
@@ -215,11 +216,12 @@ wandb.log({"num_trainable_params": num_params})
 wandb.run.summary["num_trainable_params"] = num_params
 
 
-def run_training_step(data_loader, is_val_step=False):
+def run_training_step(data_loader, epoch, global_step, is_val_step=False):
     flow.eval() if is_val_step else flow.train()
 
     text_desc = "val" if is_val_step else "train"
     losses_ll, losses_mmap, losses_total = [], [], []
+    bad_fracs = []
 
     pbar = tqdm(data_loader, desc=f"{text_desc} batches", leave=False)
 
@@ -233,37 +235,150 @@ def run_training_step(data_loader, is_val_step=False):
             x_data = x[:, :-args.NUM_COND_INPUTS]
             x_context = x[:, -args.NUM_COND_INPUTS:]
             dist = flow(x_context)
-            loss_ll = -dist.log_prob(x_data).mean()
+            #loss_ll = -dist.log_prob(x_data).mean()
         else:
             x_data = x
             x_context = None
             dist = flow()
-            loss_ll = -dist.log_prob(x_data).mean()
+            #loss_ll = -dist.log_prob(x_data).mean()
 
-        # One generated sample per batch item.
-        if hasattr(dist, "rsample"):
-            x_gen_preproc = dist.rsample()
-        else:
-            x_gen_preproc = dist.sample()
+        # -----------------------------
+        # Check parameters before loss
+        # -----------------------------
 
+        bad_param = False
+        
+        for name, p in flow.named_parameters():
+            if not torch.isfinite(p).all():
+                print("\nNON-FINITE FLOW PARAMETER")
+                print(name)
+                print("finite frac:", torch.isfinite(p).float().mean().item())
+                bad_param = True
+        
+        if bad_param:
+            torch.save(
+                {
+                    "epoch": epoch,
+                    "global_step": global_step,
+                    "model_state_dict": flow.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict() if not is_val_step else None,
+                },
+                f"{save_dir}/nan_params_epoch{epoch}_step{global_step}.pt",
+            )
+            raise RuntimeError("Flow parameters became non-finite.")
+
+
+        # -----------------------------
+        # Log likelihood loss
+        # -----------------------------
+        log_prob = dist.log_prob(x_data)
+        loss_ll = -log_prob.mean()
+
+
+        if not torch.isfinite(loss_ll):
+            debug_path = f"{save_dir}/nan_debug_epoch{epoch}_step{global_step}.pt"
+            model_path = f"{save_dir}/nan_model_epoch{epoch}_step{global_step}.pt"
+        
+            bad_lp_mask = ~torch.isfinite(log_prob)
+            bad_x_mask = ~torch.isfinite(x_data).all(dim=1)
+        
+            torch.save(
+                {
+                    "epoch": epoch,
+                    "global_step": global_step,
+                    "model_state_dict": flow.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict() if not is_val_step else None,
+                },
+                model_path,
+            )
+
+            torch.save(
+                {
+                    "epoch": epoch,
+                    "global_step": global_step,
+                    "loss_ll": loss_ll.detach().cpu(),
+                    "log_prob": log_prob.detach().cpu(),
+                    "bad_log_prob_mask": bad_lp_mask.detach().cpu(),
+                    "bad_x_mask": bad_x_mask.detach().cpu(),
+                    "x_full": x.detach().cpu(),
+                    "x_data": x_data.detach().cpu(),
+                    "x_context": None if x_context is None else x_context.detach().cpu(),
+                    "bad_x_data": x_data[bad_lp_mask | bad_x_mask].detach().cpu(),
+                    "bad_x_context": None if x_context is None else x_context[bad_lp_mask | bad_x_mask].detach().cpu(),
+                },
+                debug_path,
+            )
+
+            print("\nLL LOSS BECAME NON-FINITE")
+            print("epoch:", epoch)
+            print("global_step:", global_step)
+            print("loss_ll:", loss_ll.item())
+            print("num bad log_prob:", bad_lp_mask.sum().item(), "/", len(log_prob))
+            print("num bad x_data:", bad_x_mask.sum().item(), "/", len(x_data))
+            print("saved model:", model_path)
+            print("saved debug batch:", debug_path)
+        
+            if bad_lp_mask.any():
+                bad_idx = torch.where(bad_lp_mask)[0]
+                print("first bad indices:", bad_idx[:20].detach().cpu().numpy())
+                print("first bad x_data rows:")
+                print(x_data[bad_idx[:5]].detach().cpu())
+                if x_context is not None:
+                    print("first bad x_context rows:")
+                    print(x_context[bad_idx[:5]].detach().cpu())
+        
+            raise RuntimeError("Stopping because LL became NaN/inf.")
+
+
+        # -----------------------------
+        # Material loss
+        # -----------------------------
+
+        if not hasattr(dist, "rsample"):
+            raise RuntimeError("dist does not support rsample(); material loss will not be differentiable.")
+
+        rng_state = torch.get_rng_state()
+        cuda_rng_state = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+
+
+        x_gen_preproc = dist.rsample()
+
+        x_gen_preproc_clean = x_gen_preproc.clone()
+        finite_mask_preproc = torch.isfinite(x_gen_preproc_clean).all(dim=1)
+        x_gen_preproc_clean[~finite_mask_preproc] = x_gen_preproc[~finite_mask_preproc].detach() * 0.0
+        
+        # Build full tensor from the clean version
         if args.NUM_COND_INPUTS > 0:
-            x_gen_preproc_full = torch.cat([x_gen_preproc, x_context], dim=1)
+            x_gen_preproc_full = torch.cat([x_gen_preproc_clean, x_context], dim=1)
         else:
-            x_gen_preproc_full = x_gen_preproc
-
+            x_gen_preproc_full = x_gen_preproc_clean
+        
         finite_mask = torch.isfinite(x_gen_preproc_full).all(dim=1)
+        bad_frac_preproc = 1.0 - finite_mask.float().mean().item()
+        bad_frac_phys = 0.0
+        x_gen_phys_full = None
+        finite_phys_mask = None
+
+
+        x_gen_phys_full = None
+        finite_phys_mask = None
+
+        
 
         if finite_mask.any():
             x_gen_preproc_full_finite = x_gen_preproc_full[finite_mask]
 
-            x_gen_phys = inverse_preprocess_data_torch(
-                x_gen_preproc_full_finite,
-                save_dir,
-                args.ZUKO_ID,
-                args.NUM_COND_INPUTS,
-            )
+            with torch.no_grad():
+    
+                x_gen_phys = inverse_preprocess_data_torch(
+                    x_gen_preproc_full_finite,
+                    save_dir,
+                    args.ZUKO_ID,
+                    args.NUM_COND_INPUTS,
+                )
 
             finite_phys_mask = torch.isfinite(x_gen_phys).all(dim=1)
+            bad_frac_phys = 1.0 - finite_phys_mask.float().mean().item()
             x_gen_phys = x_gen_phys[finite_phys_mask]
 
             if "Barrel" in collection_list[0] and len(x_gen_phys) > 0:
@@ -278,29 +393,189 @@ def run_training_step(data_loader, is_val_step=False):
         else:
             material_loss = torch.zeros((), device=device)
 
-        bad_frac = 1.0 - finite_mask.float().mean().item()
-
+      
         total_loss = loss_ll + lambda_material * material_loss
 
         if not is_val_step:
+            # Save exact state before backward.
+            # This is overwritten every step so it won't fill your filesystem.
+            torch.save(
+                {
+                    "epoch": epoch,
+                    "global_step": global_step,
+                    "model_state_dict": flow.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "x": x.detach().cpu(),
+                    "x_data": x_data.detach().cpu(),
+                    "x_context": None if x_context is None else x_context.detach().cpu(),
+                    "x_gen_preproc": x_gen_preproc.detach().cpu(),
+                    "x_gen_preproc_full": x_gen_preproc_full.detach().cpu(),
+                    "x_gen_phys_full": None if x_gen_phys_full is None else x_gen_phys_full.detach().cpu(),
+                    "x_gen_phys": x_gen_phys.detach().cpu(),
+                    "finite_mask": finite_mask.detach().cpu(),
+                    "finite_phys_mask": None if finite_phys_mask is None else finite_phys_mask.detach().cpu(),
+                    "log_prob": log_prob.detach().cpu(),
+                    "loss_ll": loss_ll.detach().cpu(),
+                    "material_loss": material_loss.detach().cpu(),
+                    "total_loss": total_loss.detach().cpu(),
+                    "lambda_material": lambda_material,
+                    "rng_state": rng_state.cpu(),
+                    "cuda_rng_state": cuda_rng_state,
+                },
+                f"{save_dir}/latest_before_backward.pt",
+            )
+
             total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(flow.parameters(), 5.0)
+            torch.nn.utils.clip_grad_norm_(flow.parameters(), 1.0, error_if_nonfinite=False)
+
+            grad_summary = {}
+            bad_grad = False
+            bad_grad_name = None
+            max_grad = 0.0
+
+            for name, p in flow.named_parameters():
+                if p.grad is None:
+                    continue
+
+                g = p.grad.detach()
+                finite_g = torch.isfinite(g)
+
+                grad_summary[name] = {
+                    "shape": tuple(g.shape),
+                    "finite_frac": finite_g.float().mean().item(),
+                    "num_bad": (~finite_g).sum().item(),
+                    "abs_max": torch.nan_to_num(
+                        g, nan=0.0, posinf=0.0, neginf=0.0
+                    ).abs().max().item(),
+                    "mean": torch.nan_to_num(
+                        g, nan=0.0, posinf=0.0, neginf=0.0
+                    ).mean().item(),
+                    "std": torch.nan_to_num(
+                        g, nan=0.0, posinf=0.0, neginf=0.0
+                    ).std().item(),
+                }
+
+                if not finite_g.all():
+                    bad_grad = True
+                    bad_grad_name = name
+                    break
+
+                max_grad = max(max_grad, g.abs().max().item())
+
+            torch.save(
+                {
+                    "epoch": epoch,
+                    "global_step": global_step,
+                    "model_state_dict": flow.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "x": x.detach().cpu(),
+                    "x_data": x_data.detach().cpu(),
+                    "x_context": None if x_context is None else x_context.detach().cpu(),
+                    "x_gen_preproc": x_gen_preproc.detach().cpu(),
+                    "x_gen_preproc_full": x_gen_preproc_full.detach().cpu(),
+                    "x_gen_phys_full": None if x_gen_phys_full is None else x_gen_phys_full.detach().cpu(),
+                    "x_gen_phys": x_gen_phys.detach().cpu(),
+                    "finite_mask": finite_mask.detach().cpu(),
+                    "finite_phys_mask": None if finite_phys_mask is None else finite_phys_mask.detach().cpu(),
+                    "log_prob": log_prob.detach().cpu(),
+                    "loss_ll": loss_ll.detach().cpu(),
+                    "material_loss": material_loss.detach().cpu(),
+                    "total_loss": total_loss.detach().cpu(),
+                    "lambda_material": lambda_material,
+                    "rng_state": rng_state.cpu(),
+                    "cuda_rng_state": cuda_rng_state,
+                    "grad_summary": grad_summary,
+                },
+                f"{save_dir}/latest_after_backward_before_step.pt",
+            )
+
+            if bad_grad:
+                print("\nNON-FINITE GRADIENT BEFORE OPTIMIZER STEP")
+                print("param:", bad_grad_name)
+                print("loss_ll:", loss_ll.item())
+                print("material_loss:", material_loss.item())
+                print("lambda_material:", lambda_material)
+                print("total_loss:", total_loss.item())
+
+                torch.save(
+                    {
+                        "epoch": epoch,
+                        "global_step": global_step,
+                        "model_state_dict": flow.state_dict(),
+                        "optimizer_state_dict": optimizer.state_dict(),
+                    },
+                    f"{save_dir}/bad_grad_model_epoch{epoch}_step{global_step}.pt",
+                )
+
+                torch.save(
+                    {
+                        "epoch": epoch,
+                        "global_step": global_step,
+                        "bad_grad_name": bad_grad_name,
+                        "x": x.detach().cpu(),
+                        "x_data": x_data.detach().cpu(),
+                        "x_context": None if x_context is None else x_context.detach().cpu(),
+                        "x_gen_preproc": x_gen_preproc.detach().cpu(),
+                        "x_gen_preproc_full": x_gen_preproc_full.detach().cpu(),
+                        "x_gen_phys_full": None if x_gen_phys_full is None else x_gen_phys_full.detach().cpu(),
+                        "x_gen_phys": x_gen_phys.detach().cpu(),
+                        "finite_mask": finite_mask.detach().cpu(),
+                        "finite_phys_mask": None if finite_phys_mask is None else finite_phys_mask.detach().cpu(),
+                        "log_prob": log_prob.detach().cpu(),
+                        "loss_ll": loss_ll.detach().cpu(),
+                        "material_loss": material_loss.detach().cpu(),
+                        "total_loss": total_loss.detach().cpu(),
+                        "lambda_material": lambda_material,
+                        "rng_state": rng_state.cpu(),
+                        "cuda_rng_state": cuda_rng_state,
+                        "grad_summary": grad_summary,
+                    },
+                    f"{save_dir}/bad_grad_batch_epoch{epoch}_step{global_step}.pt",
+                )
+
+                raise RuntimeError("Stopping before optimizer step because gradient is non-finite.")
+
+            
+   
+
+        
             optimizer.step()
+
+            torch.save(
+                {
+                    "epoch": epoch,
+                    "global_step": global_step,
+                    "model_state_dict": flow.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "loss_ll": loss_ll.detach().cpu(),
+                    "material_loss": material_loss.detach().cpu(),
+                    "total_loss": total_loss.detach().cpu(),
+                },
+                f"{save_dir}/latest_after_step.pt",
+            )
+
+            global_step += 1
+
+
+
+            if global_step % 5000 == 0:
+                torch.save(flow.state_dict(), f"{save_dir}/latest_good_step{global_step}.pt")
 
         losses_ll.append(loss_ll.item())
         losses_mmap.append(material_loss.item())
         losses_total.append(total_loss.item())
-        if not is_val_step:
-            wandb.log({f"{text_desc}/bad_sample_frac": bad_frac})
+        bad_fracs.append(bad_frac_preproc + bad_frac_phys)
 
         pbar.set_postfix(loss=f"{total_loss.item():.3e}")
 
-    return {
+    metrics = {
         f"{text_desc}/ll": np.mean(losses_ll),
         f"{text_desc}/mmap": np.mean(losses_mmap),
         f"{text_desc}/total": np.mean(losses_total),
+        f"{text_desc}/bad_sample_frac": np.mean(bad_fracs),
     }
-   
+
+    return metrics, global_step
 
 
 
@@ -313,7 +588,8 @@ if args.TRAIN_FLOW:
     # %%
     losses_train, losses_val = [], []
     best_val_loss = 1e10
-            
+
+    global_step = 0
 
     for k in range(args.NUM_EPOCHS):
 
@@ -321,16 +597,19 @@ if args.TRAIN_FLOW:
         epoch_losses_train_mask, epoch_losses_val_mask = [], []
         epoch_losses_train_total, epoch_losses_val_total = [], []
 
-        train_losses = run_training_step(train_loader, is_val_step=False)
+        train_losses, global_step = run_training_step(train_loader, k, global_step, is_val_step=False)
 
         with torch.no_grad():
-            val_losses = run_training_step(val_loader, is_val_step=True)
+            val_losses, _ = run_training_step(val_loader, k, global_step, is_val_step=True)
 
-        wandb.log({
-            "epoch": k,
-            **train_losses,
-            **val_losses,
-        })
+        wandb.log(
+            {
+                
+                "epoch": k,
+                **train_losses,
+                **val_losses,
+            },
+)
         
         losses_train.append(train_losses["train/total"])
         losses_val.append(val_losses["val/total"])

@@ -589,8 +589,10 @@ def torch_barrel_material_penalty(
         outside_z = torch.abs(z_l) - layer_info["z"]
 
         # smooth ReLU: ~0 inside, grows outside
-        penalty_l = F.softplus(outside_xy / softness) * softness
-        penalty_l = penalty_l + F.softplus(outside_z / softness) * softness
+        #penalty_l = F.softplus(outside_xy / softness) * softness
+        penalty_l = torch.nn.functional.relu(outside_xy)
+        #penalty_l = penalty_l + F.softplus(outside_z / softness) * softness
+        penalty_l = penalty_l + torch.nn.functional.relu(outside_z) 
 
         penalties.append(penalty_l)
 
