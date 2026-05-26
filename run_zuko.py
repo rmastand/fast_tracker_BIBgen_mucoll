@@ -87,11 +87,13 @@ parser.add_argument("--EVAL_FLOW", action="store_true", help="Whether to evaluat
 parser.add_argument("--PHI_LOCAL", action="store_true", help="Whether to evaluate the flow after training")
 
 parser.add_argument("--NUM_BDTS", type=int, default=5, help="For sample evaluation")
+parser.add_argument("--LAMBDA", type=float, default=0, help="For sample evaluation")
+
 
 args = parser.parse_args()
 
 
-lambda_material = 0.1 / args.BATCH_SIZE
+lambda_material = args.LAMBDA / args.BATCH_SIZE
 
 # %%
 save_dir = f"{args.WORKING_DIR}/zuko_outputs/{args.ZUKO_ID}/{args.NAME}"

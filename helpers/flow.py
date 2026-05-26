@@ -14,11 +14,12 @@ def sample_from_flow(flow, N=None, x_context=None):
 
         return samples
 
-def build_z_lookup(all_data, side_idx, layer_idx, sensors, z_idx):
+def build_z_lookup(all_data, side_idx, layer_idx, sensor_idx, z_idx):
     sides = np.asarray(all_data[:, side_idx]).reshape(-1).astype(int)
     layers = np.asarray(all_data[:, layer_idx]).reshape(-1).astype(int)
-    sensors = np.asarray(sensors).reshape(-1).astype(int)
+    sensors = np.asarray(all_data[:, sensor_idx]).reshape(-1).astype(int)
     zs = np.asarray(all_data[:, z_idx]).reshape(-1)
+
 
     lookup = {}
 
@@ -30,7 +31,8 @@ def build_z_lookup(all_data, side_idx, layer_idx, sensors, z_idx):
     # fill (faster than repeated masking)
     for s, l, sens, z in zip(sides, layers, sensors, zs):
         lookup[(s, l, sens)].append(z)
-    
+
+
 
     # convert lists → numpy arrays
     for key in lookup:
