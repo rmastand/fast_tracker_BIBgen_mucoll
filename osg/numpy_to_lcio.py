@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from html import parser
+
 import numpy as np
 import pyLCIO
 from pyLCIO import IOIMPL, IMPL, EVENT
@@ -8,8 +10,15 @@ from ROOT import Math
 import os
 #from tqdm import tqdm
 
+import argparse
 
-OUTPUT_PATH = "./output_flow.slcio"
+parser = argparse.ArgumentParser()
+parser.add_argument("--SAMPLES_PATH", type=str, default="/scratch/rrm39/v7_reco/recoBIB/flow_samples", help="Path to the samples directory")
+parser.add_argument("--OUTPUT_PATH", type=str, default="./output_flow.slcio", help="Output LCIO file path")
+args = parser.parse_args()
+
+OUTPUT_PATH = args.OUTPUT_PATH
+SAMPLES_PATH = args.SAMPLES_PATH
 
 # Load hit arrays
 collections = [
@@ -38,7 +47,7 @@ for evt_num in range(NUM_EVENTS):
 
         print(COLLECTION_NAME)
 
-        hits_array = np.load(f"/scratch/rrm39/v7_reco/recoBIB/flow_samples/{COLLECTION_NAME}.npy")
+        hits_array = np.load(f"{SAMPLES_PATH}/{COLLECTION_NAME}.npy")
 
         col = IMPL.LCCollectionVec(EVENT.LCIO.SIMTRACKERHIT)
 
