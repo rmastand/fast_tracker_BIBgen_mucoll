@@ -4,20 +4,72 @@ import pickle
 
 epsilon = 1e-12
 
+from helpers.material_map import OUTER_LAYERS, INNER_LAYERS, VERTEX_LAYERS
 
-num_sectors = {
-    "InnerTrackerEndcapCollection": 26, 
-    "OuterTrackerEndcapCollection": 48, 
-    "VertexEndcapCollection": 16,
-    "OuterTrackerBarrelCollection": 164,
-}
+def local_phi_transformation(X, layers, phi, collection, phi_sector_index=None, direction="forward"):
+
+    unique_layers = np.unique(layers)
+
+    for l in unique_layers:
+        layer_mask = (layers == l)
+        l_int = int(l)
+
+        if collection == "OuterTrackerBarrelCollection":
+            n = OUTER_LAYERS[l_int]["nphi"] 
+        elif collection == "InnerTrackerBarrelCollection":
+            n = 2 * INNER_LAYERS[l_int]["nphi_half"] 
+        elif collection == "VertexBarrelCollection":
+            n = VERTEX_LAYERS[l_int]["nstaves"] 
+        elif collection == "OuterTrackerEndcapCollection":
+            n = 48
+        elif collection == "InnerTrackerEndcapCollection":
+            n = 26
+        elif collection == "VertexEndcapCollection":
+            n = 16
+        else:
+            raise ValueError(f"Unknown collection: {collection}")
+
+        delta_phi = 2 * np.pi / n
+
+        if direction == "forward":
+            phi_layer = phi[layer_mask]
+
+            phi_layer_wrapped = np.mod(phi_layer, 2 * np.pi)
+            sector_index = np.floor(phi_layer_wrapped / delta_phi).astype(int)
+            sector_coord = sector_index * delta_phi
+
+            phi_local = phi_layer_wrapped - sector_coord
+            X[layer_mask, 2] = phi_local / delta_phi * 0.1
+
+        elif direction == "reverse":
+            local_phi = X[layer_mask, 2]
+            module = phi_sector_index[layer_mask].astype(int)
+        
+            if collection == "InnerTrackerBarrelCollection":
+                sector_coord = (module - 0.5) * delta_phi
+            elif collection == "OuterTrackerBarrelCollection":
+                sector_coord = (module - 0.5) * delta_phi
+            else:
+                sector_coord = module * delta_phi
+        
+            phi_global = sector_coord + local_phi / 0.1 * delta_phi
+            phi_global = (phi_global + np.pi) % (2 * np.pi) - np.pi
+        
+            X[layer_mask, 2] = phi_global
+
+        else:
+            raise ValueError(f"direction must be 'forward' or 'reverse', got {direction}")
+
+    return X
+        
 
 
+    
 def load_in_data(collection_list, features, working_dir, training_frac, num_cond_features=0, feature_order=None, num_files=1, use_local_phi=False):
         
-    data = []
-    context = []
+    X = []
     layers = []
+    phi_index = []
     
     for i, collection in enumerate(collection_list):
         for r in range(num_files):
@@ -27,56 +79,86 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
             if num_cond_features == 0:
                 tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit_reco_{r}.npy")
                 
-                data.append(tmp_data[:int(len(tmp_data)*training_frac)])
+                X.append(tmp_data[:int(len(tmp_data)*training_frac)])
             elif num_cond_features > 0:
                 tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit_conditional_reco_{r}.npy")
 
-                data.append(tmp_data[:int(len(tmp_data)*training_frac), :-num_cond_features])
-                context.append(tmp_data[:int(len(tmp_data)*training_frac), -num_cond_features:])
+                X.append(tmp_data[:int(len(tmp_data)*training_frac)])
+
+                # side, layer, module, sensor starting from index 6
                 layers.append(tmp_data[:int(len(tmp_data)*training_frac),7])
+                if "Barrel" in collection:
+                    phi_index.append(tmp_data[:int(len(tmp_data)*training_frac),8]) # module defines the phi
+                elif "Endcap" in collection:
+                    phi_index.append(tmp_data[:int(len(tmp_data)*training_frac),9]) # sensor defines the phi
                
         
     
-    data = np.vstack(data)
+    X = np.vstack(X)
     layers = np.vstack(layers).reshape(-1)
-    if num_cond_features > 0:
-        context = np.vstack(context)
-    data[:,0] = np.log(data[:,0]) #preprocess the energy
+    phi_index = np.vstack(phi_index).reshape(-1)
+    
+   
+    X[:,0] = np.log(X[:,0]) #preprocess the energy
 
     if features == "rphi":
-        r = np.sqrt(data[:, 1]**2 + data[:, 2]**2)
-        phi = np.arctan2(data[:, 2], data[:, 1])
-        data[:,1] = r
-        data[:,2] = phi
+        r = np.sqrt(X[:, 1]**2 + X[:, 2]**2)
+        phi = np.arctan2(X[:, 2], X[:, 1])
+        X[:,1] = r
+        X[:,2] = phi
+
+       
+        
 
         if use_local_phi:
 
-            num_modules_per_layer = {0: 92, 1: 128, 2: 164}
-            for l in range(3):
-                layer_mask = (layers == l)
-                phi_l = phi[layer_mask]
-                n = num_modules_per_layer[l]
-                delta_phi = 2 * np.pi / n
-                sector_index = np.floor(phi_l / delta_phi).astype(int)
-                sector_coord = sector_index * delta_phi
-                phi_local = phi_l - sector_coord  # in [0, delta_phi)
-                data[layer_mask, 2] = phi_local / delta_phi * 0.1  # normalize to [0, 10)
-
-            # import matplotlib.pyplot as plt
-            # print(data[:, 2])
-            # print(np.unique(layers))
-            # plt.figure()
-            # plt.hist(data[:, 2], bins = 100)
-            # plt.savefig("test")
-
-            # x = r*np.cos(data[:, 2])
-            # y = r*np.sin(data[:, 2])
-
-            # plt.figure(figsize=(10,10))
-            # plt.scatter(x, y, s = 0.01)
+            import matplotlib.pyplot as plt
+        
+            plt.figure()
+            plt.hist(X[:, 2], bins = 100)
+            plt.show()
+    
+            x = r*np.cos(X[:, 2])
+            y = r*np.sin(X[:, 2])
+    
+            plt.figure(figsize=(15,15))
+            plt.scatter(x, y, s = 0.001)
             # plt.xlim(700,1600)
             # plt.ylim(-50,200)
-            # plt.savefig("test2")
+            plt.show()
+
+            X = local_phi_transformation(X, layers, phi, collection)
+            # import matplotlib.pyplot as plt
+        
+            # plt.figure()
+            # plt.hist(X[:, 2], bins = 100)
+            # plt.show()
+    
+            # x = r*np.cos(X[:, 2])
+            # y = r*np.sin(X[:, 2])
+    
+            # plt.figure(figsize=(10,10))
+            # plt.scatter(x, y, s = 0.01)
+            # # plt.xlim(700,1600)
+            # # plt.ylim(-50,200)
+            # plt.show()
+
+            # X = local_phi_transformation(X, layers, phi, collection, phi_sector_index = phi_index, direction = "reverse")
+            # import matplotlib.pyplot as plt
+        
+            # plt.figure()
+            # plt.hist(X[:, 2], bins = 100)
+            # plt.show()
+    
+            # x = r*np.cos(X[:, 2])
+            # y = r*np.sin(X[:, 2])
+    
+            # plt.figure(figsize=(15,15))
+            # plt.scatter(x, y, s = 0.001)
+            # # plt.xlim(700,1600)
+            # # plt.ylim(-50,200)
+            # plt.show()
+
                 
             feature_labels = ["log($E$) [Gev]", "$r$", "$\phi$ (local)", "$z$", "$t$", "system", "side", "layer", "module", "sensor"]
 
@@ -85,7 +167,6 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
     else:
         feature_labels = ["log($E$) [Gev]", "$x$", "$y$", "$z$", "$t$ [s]", "system", "side", "layer", "module", "sensor"]
 
-    X = np.hstack([data,  context]) if num_cond_features > 0 else data
 
     if feature_order is not None:
         X = X[:, feature_order]
@@ -95,6 +176,7 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
         feature_labels[-1-i] = feature_labels[-1-i] + " (cond)"
 
     return X, feature_labels
+
 
 
 
