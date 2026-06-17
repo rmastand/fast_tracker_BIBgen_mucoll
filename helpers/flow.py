@@ -1,16 +1,30 @@
 import numpy as np
 import torch
 
-def sample_from_flow(flow, N=None, x_context=None):
+def sample_from_flow(flow, N, x_context=None):
     flow.eval()
+
     with torch.no_grad():
+
         if x_context is not None:
-            samples = flow(x_context).sample().detach().cpu().numpy()
+
+            samples = []
+
+            for _ in range(N):
+                s = flow(x_context).sample()  # (M, D)
+                samples.append(s)
+
+            samples = torch.cat(samples, dim=0)  # (N*M, D)
+
+            context_repeated = x_context.repeat(N, 1)  # (N*M, C)
+
             samples = np.hstack([
-                        samples,
-                        x_context.cpu().numpy()])
+                samples.cpu().numpy(),
+                context_repeated.cpu().numpy()
+            ])
+
         else:
-            samples = flow().sample((N,)).detach().cpu().numpy()
+            samples = flow().sample((N,)).cpu().numpy()
 
         return samples
 

@@ -116,7 +116,7 @@ def plot_corner_hist_2d(
     return fig, axes
 
 
-def make_2d_plots(data_array, labels):
+def make_2d_plots(data_array, labels, title):
 
 
     fig, ax = plt.subplots(1, len(data_array), figsize = (10*len(data_array), 10))
@@ -125,8 +125,8 @@ def make_2d_plots(data_array, labels):
 
     for i, key in enumerate(data_array.keys()):
 
-        coord0_lim = np.min(data_array["data"][0]), np.max(data_array["data"][0])
-        coord1_lim = np.min(data_array["data"][1]), np.max(data_array["data"][1])
+        coord0_lim = np.min(data_array["Sim BIB"][0]), np.max(data_array["Sim BIB"][0])
+        coord1_lim = np.min(data_array["Sim BIB"][1]), np.max(data_array["Sim BIB"][1])
             
         ax[i].scatter(data_array[key][0], data_array[key][1], s = 0.001)
         ax[i].set_xlim(coord0_lim)
@@ -134,6 +134,8 @@ def make_2d_plots(data_array, labels):
         ax[i].set_xlabel(labels[0])
         ax[i].set_ylabel(labels[1])
         ax[i].set_title(key)
+
+    plt.suptitle(title)
 
     plt.show()
 

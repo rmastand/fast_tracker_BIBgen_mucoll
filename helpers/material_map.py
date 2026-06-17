@@ -381,7 +381,7 @@ def build_masked_datasets(data_dir, samples_dir, collections, NUM_COND_INPUTS, f
     for i, col_name in enumerate(collections):
     
         mask = apply_material_map_hybrid(samples_dir, None, col_name, feature_indices_dict)
-        print(f"{col_name}: {100*sum(mask)/len(mask)}% of samples pass ({sum(mask)}, {len(mask)})")
+        print(f"{col_name}: {100*sum(mask)/len(mask)}% of samples pass ({sum(mask)} after masking, {len(mask)} before masking)")
         flow_samples_masked[col_name] = samples_dir[col_name][mask]
     
         masked_idx = np.where(mask)[0]

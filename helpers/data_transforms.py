@@ -43,7 +43,15 @@ def local_phi_transformation(X, layers, phi, collection, phi_sector_index=None, 
 
         elif direction == "reverse":
             local_phi = X[layer_mask, 2]
-            module = phi_sector_index[layer_mask].astype(int)
+
+            if phi_sector_index is not None:
+                module = phi_sector_index[layer_mask].astype(int)
+            else:
+                module = np.random.randint(
+                0,
+                n,
+                size=np.count_nonzero(layer_mask)
+            )
         
             if collection == "InnerTrackerBarrelCollection":
                 sector_coord = (module - 0.5) * delta_phi
@@ -55,7 +63,7 @@ def local_phi_transformation(X, layers, phi, collection, phi_sector_index=None, 
             phi_global = sector_coord + local_phi / 0.1 * delta_phi
             phi_global = (phi_global + np.pi) % (2 * np.pi) - np.pi
         
-            X[layer_mask, 2] = phi_global
+            X[layer_mask, 3] = phi_global
 
         else:
             raise ValueError(f"direction must be 'forward' or 'reverse', got {direction}")
@@ -65,7 +73,7 @@ def local_phi_transformation(X, layers, phi, collection, phi_sector_index=None, 
 
 
     
-def load_in_data(collection_list, features, working_dir, training_frac, num_cond_features=0, feature_order=None, num_files=1, use_local_phi=False):
+def load_in_data(collection_list, features, working_dir, training_frac, num_cond_features=0, feature_order=None, num_files=2, use_local_phi=False):
         
     X = []
     layers = []
@@ -95,8 +103,9 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
         
     
     X = np.vstack(X)
-    layers = np.vstack(layers).reshape(-1)
-    phi_index = np.vstack(phi_index).reshape(-1)
+    layers = np.concatenate(layers).reshape(-1)
+    phi_index = np.concatenate(phi_index).reshape(-1)
+
     
    
     X[:,0] = np.log(X[:,0]) #preprocess the energy
@@ -112,20 +121,20 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
 
         if use_local_phi:
 
-            import matplotlib.pyplot as plt
+            # import matplotlib.pyplot as plt
         
-            plt.figure()
-            plt.hist(X[:, 2], bins = 100)
-            plt.show()
+            # plt.figure()
+            # plt.hist(X[:, 2], bins = 100)
+            # plt.show()
     
-            x = r*np.cos(X[:, 2])
-            y = r*np.sin(X[:, 2])
+            # x = r*np.cos(X[:, 2])
+            # y = r*np.sin(X[:, 2])
     
-            plt.figure(figsize=(15,15))
-            plt.scatter(x, y, s = 0.001)
-            # plt.xlim(700,1600)
-            # plt.ylim(-50,200)
-            plt.show()
+            # plt.figure(figsize=(15,15))
+            # plt.scatter(x, y, s = 0.001)
+            # # plt.xlim(700,1600)
+            # # plt.ylim(-50,200)
+            # plt.show()
 
             X = local_phi_transformation(X, layers, phi, collection)
             # import matplotlib.pyplot as plt
@@ -160,12 +169,12 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
             # plt.show()
 
                 
-            feature_labels = ["log($E$) [Gev]", "$r$", "$\phi$ (local)", "$z$", "$t$", "system", "side", "layer", "module", "sensor"]
+            feature_labels = ["log($E$) [Gev]", "$r$ [mm]", "$\phi$ (local)", "$z$ [mm]", "$t$ [s]", "system", "side", "layer", "module", "sensor"]
 
         else:
-            feature_labels = ["log($E$) [Gev]", "$r$", "$\phi$", "$z$", "$t$", "system", "side", "layer", "module", "sensor"]
+            feature_labels = ["log($E$) [Gev]", "$r$ [mm]", "$\phi$", "$z$ [mm]", "$t$ [s]", "system", "side", "layer", "module", "sensor"]
     else:
-        feature_labels = ["log($E$) [Gev]", "$x$", "$y$", "$z$", "$t$ [s]", "system", "side", "layer", "module", "sensor"]
+        feature_labels = ["log($E$) [Gev]", "$x$ [mm]", "$y$ [mm]", "$z$ [mm]", "$t$ [s]", "system", "side", "layer", "module", "sensor"]
 
 
     if feature_order is not None:
