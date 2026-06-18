@@ -81,7 +81,7 @@ parser.add_argument("--DEGREE", type=int, default=3, help="Freqs for CNF")
 parser.add_argument("--POLYNOMIALS", type=int, default=4, help="Freqs for CNF")
 
 
-parser.add_argument("--PLOT_EPOCH_INTERVAL", type=int, default=10, help="Interval for plotting during training")
+parser.add_argument("--PLOT_EPOCH_INTERVAL", type=int, default=100, help="Interval for plotting during training")
 parser.add_argument("--TRAIN_FLOW", action="store_true", help="Whether to train the flow")
 parser.add_argument("--EVAL_FLOW", action="store_true", help="Whether to evaluate the flow after training")
 parser.add_argument("--PHI_LOCAL", action="store_true", help="Whether to evaluate the flow after training")
@@ -148,7 +148,6 @@ plt.close()
 # %%
 
 
-X_preproc = preprocess_data(X, save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS)
 
 # plot_hists_1d({"data":data}, bins_dict, log_dims=log_vars, labels=feature_labels)
 # plt.show()
@@ -165,14 +164,18 @@ X_preproc = preprocess_data(X, save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS)
 from sklearn.model_selection import train_test_split
 
 
-X_train, X_val = train_test_split(X_preproc, test_size=0.2, random_state=42)
+X_train, X_val = train_test_split(X, test_size=0.2, random_state=42)
+
+X_train = preprocess_data(X_train, save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS, scaler_exists=Fa;se)
+X_val = preprocess_data(X_val, save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS, scaler_exist=True)
+
 
 
 print(f"Train data has shape {X_train.shape}.")
 print(f"Val data has shape {X_val.shape}.")
 
-train_loader = torch.utils.data.DataLoader(X_train, batch_size=args.BATCH_SIZE, shuffle=True, num_workers = 8, pin_memory = True)
-val_loader = torch.utils.data.DataLoader(X_val, batch_size=args.BATCH_SIZE, shuffle=False, num_workers = 8, pin_memory = True)
+train_loader = torch.utils.data.DataLoader(X_train, batch_size=args.BATCH_SIZE, shuffle=True, num_workers = 0, pin_memory = True)
+val_loader = torch.utils.data.DataLoader(X_val, batch_size=args.BATCH_SIZE, shuffle=False, num_workers = 0, pin_memory = True)
 
 # %%
 import zuko
@@ -322,11 +325,11 @@ if args.TRAIN_FLOW:
             if args.NUM_COND_INPUTS > 0:
                 x_plot_data = x_plot[:, :-args.NUM_COND_INPUTS]
                 x_plot_context = x_plot[:, -args.NUM_COND_INPUTS:]
-                factor = 5
+                factor = 1
                 context_to_sample = x_plot_context.repeat_interleave(factor, dim=0)
                 samples = sample_from_flow(flow, N=factor * len(x_plot_data), x_context=context_to_sample)
             else:
-                factor = 5
+                factor = 1
                 samples = sample_from_flow(flow, N=factor * len(x_plot))
         
             loc_data_dict = {
@@ -347,16 +350,16 @@ if args.TRAIN_FLOW:
             plt.savefig(f"{save_dir}/hists")
             plt.close()
 
-            for key in loc_data_dict.keys():
-                fig_samp, axes_samp = plot_corner_hist_2d(
-                    loc_data_dict[key],
-                    feature_labels=feature_labels,
-                    bins_dict=bins_dict,
-                    log_dims=log_vars,
-                    title= key,
-                )
-                plt.savefig(f"{save_dir}/corner_{key}")
-                plt.close()
+            # for key in loc_data_dict.keys():
+            #     fig_samp, axes_samp = plot_corner_hist_2d(
+            #         loc_data_dict[key],
+            #         feature_labels=feature_labels,
+            #         bins_dict=bins_dict,
+            #         log_dims=log_vars,
+            #         title= key,
+            #     )
+            #     plt.savefig(f"{save_dir}/corner_{key}")
+            #     plt.close()
 
 
 
