@@ -37,12 +37,12 @@ INPUT_SUFFIX = args.INPUT_SUFFIX
 # Load hit arrays
 collections = [
      "OuterTrackerBarrelCollection",
-   "InnerTrackerBarrelCollection",
-   "VertexBarrelCollection",
-      "OuterTrackerEndcapCollection",
-     "InnerTrackerEndcapCollection",
+#    "InnerTrackerBarrelCollection",
+#    "VertexBarrelCollection",
+#       "OuterTrackerEndcapCollection",
+#      "InnerTrackerEndcapCollection",
     
-     "VertexEndcapCollection"    
+#      "VertexEndcapCollection"    
    
 ]
 NUM_EVENTS = 1
@@ -469,6 +469,8 @@ writer = IOIMPL.LCFactory.getInstance().createLCWriter()
 writer.open(OUTPUT_PATH, EVENT.LCIO.WRITE_NEW)
 
 
+
+
 # build detector object for cellID assignment
 # detector = dd4hep.Detector.getInstance()
 # xml = os.path.join(os.getenv("MUCOLL_GEO"), "k4geo/MuColl/MAIA/compact/MAIA_v0/MAIA_v0.xml")
@@ -504,7 +506,8 @@ for evt_num in range(NUM_EVENTS):
 
 
         hits_array = np.load(f"/scratch/rrm39/v7_reco/recoBIB/flow_samples/{INPUT_SUFFIX}/{COLLECTION_NAME}.npy")
-
+  
+ 
         col = IMPL.LCCollectionVec(EVENT.LCIO.SIMTRACKERHIT)
 
         col.getParameters().setValue(
@@ -609,15 +612,15 @@ for evt_num in range(NUM_EVENTS):
         z = hits_array[:, 4].astype(np.float64)
         tmp_xyz = np.column_stack((radius * np.cos(phi), radius * np.sin(phi), z))
 
-        xyz_mismatch = tmp_xyz[mismatch_indices]
+        xyz_mismatch = tmp_xyz[all_valid_masks]
 
-        for i, idx in enumerate(mismatch_indices[::10]):
+        for idx in mismatch_indices[::10]:
             print(
-                f"Hit {i} (index {idx}): "
-                f"Position = {xyz_mismatch[i]}"
+                f"Hit (index {idx}): "
+                f"Position = {xyz_mismatch[idx]}"
             )
 
-            xyz = xyz_mismatch[i][None, :]
+            xyz = xyz_mismatch[idx][None, :]
             # candidates in this system
 
             candidates = _candidate_indices(xyz, system, geom, k=k)
@@ -657,9 +660,9 @@ for evt_num in range(NUM_EVENTS):
             print()
             print()
 
-
+        exit()
         print(f"Total invalid hits = {len(all_shiyu_cell_ids_invalid)}, percent invalid = {100.0 * len(all_shiyu_cell_ids_invalid) / (len(all_shiyu_cell_ids_valid) + len(all_shiyu_cell_ids_invalid))}")
-        for invalid_hit in range(len(all_shiyu_cell_ids_invalid[::3])):
+        for invalid_hit in range(len(all_shiyu_cell_ids_invalid[:20])):
             labels_truth = decode_cellids(all_tree_cell_ids_invalid).astype(np.float64)
             invalid_hit_xyz = tmp_xyz[~all_valid_masks][invalid_hit]
             truth_cellid = all_tree_cell_ids_invalid[invalid_hit]
