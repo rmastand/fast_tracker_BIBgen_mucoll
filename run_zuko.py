@@ -166,8 +166,8 @@ from sklearn.model_selection import train_test_split
 
 X_train, X_val = train_test_split(X, test_size=0.2, random_state=42)
 
-X_train = preprocess_data(X_train, save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS, scaler_exists=Fa;se)
-X_val = preprocess_data(X_val, save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS, scaler_exist=True)
+X_train = preprocess_data(X_train, save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS, scaler_exists=False)
+X_val = preprocess_data(X_val, save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS, scaler_exists=True)
 
 
 
@@ -372,7 +372,7 @@ if args.EVAL_FLOW:
 
     eval_flow.load_state_dict(torch.load(f"{save_dir}/test.pt"))
 
-    num_samples_total = X_preproc.shape[0] 
+    num_samples_total = X_train.shape[0] 
     sample_batch_size = 8192
 
     samples_flow = []
@@ -385,7 +385,7 @@ if args.EVAL_FLOW:
 
         if args.NUM_COND_INPUTS > 0:
             context_to_sample = torch.tensor(
-                X_preproc[i:i+nn, -args.NUM_COND_INPUTS:], dtype=torch.float32
+                X_train[i:i+nn, -args.NUM_COND_INPUTS:], dtype=torch.float32
             ).to(device)
 
 

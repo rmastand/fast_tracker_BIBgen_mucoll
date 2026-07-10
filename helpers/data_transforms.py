@@ -4,73 +4,161 @@ import pickle
 
 epsilon = 1e-12
 
-from helpers.material_map import OUTER_LAYERS, INNER_LAYERS, VERTEX_LAYERS
+import numpy as np
 
-def local_phi_transformation(X, layers, phi, collection, phi_sector_index=None, direction="forward"):
+from helpers.material_map import (
+    OUTER_LAYERS,
+    INNER_LAYERS,
+    VERTEX_LAYERS,
+    VERTEX_SUPPORT_THICKNESS,
+)
 
-    unique_layers = np.unique(layers)
 
-    for l in unique_layers:
-        layer_mask = (layers == l)
-        l_int = int(l)
+def wrap_to_pi(phi):
+    return (phi + np.pi) % (2.0 * np.pi) - np.pi
 
-        if collection == "OuterTrackerBarrelCollection":
-            n = OUTER_LAYERS[l_int]["nphi"] 
-        elif collection == "InnerTrackerBarrelCollection":
-            n = 2 * INNER_LAYERS[l_int]["nphi_half"] 
-        elif collection == "VertexBarrelCollection":
-            n = VERTEX_LAYERS[l_int]["nstaves"] 
-        elif collection == "OuterTrackerEndcapCollection":
-            n = 48
-        elif collection == "InnerTrackerEndcapCollection":
-            n = 26
-        elif collection == "VertexEndcapCollection":
-            n = 16
-        else:
-            raise ValueError(f"Unknown collection: {collection}")
 
-        delta_phi = 2 * np.pi / n
+def get_nphi(collection, layer):
+    layer = int(layer)
 
+    if collection == "OuterTrackerBarrelCollection":
+        return OUTER_LAYERS[layer]["nphi"]
+
+    if collection == "InnerTrackerBarrelCollection":
+        return 2 * INNER_LAYERS[layer]["nphi_half"]
+
+    if collection == "VertexBarrelCollection":
+        return VERTEX_LAYERS[layer]["nstaves"]
+
+    if collection == "OuterTrackerEndcapCollection":
+        return 48
+
+    if collection == "InnerTrackerEndcapCollection":
+        return 26
+
+    if collection == "VertexEndcapCollection":
+        return 16
+
+    raise ValueError(f"Unknown collection: {collection}")
+
+
+def local_phi_transformation(
+    X,
+    layers,
+    phi_index,
+    collection,
+    direction="forward",
+    r_col=1,
+    phi_col=2,
+    local_scale=0.1,
+):
+    """
+    Convert global phi <-> local phi using the stored module/sensor phi index.
+
+    Assumes X is already in r-phi coordinates:
+        X[:, r_col]   = r
+        X[:, phi_col] = phi
+
+    For barrel collections:
+        phi_index should be the module index.
+
+    For endcap collections:
+        phi_index should be the sensor/sector index.
+
+    For VertexBarrelCollection:
+        local phi is actually a local tangential stave coordinate,
+        because vertex barrel staves are flat ladders, not angular wedges.
+
+    direction:
+        "forward": global phi -> local phi
+        "reverse": local phi -> global phi
+    """
+
+    X = X.copy()
+
+    layers = np.asarray(layers).reshape(-1)
+    phi_index = np.asarray(phi_index).reshape(-1).astype(int)
+
+    if len(layers) != len(X):
+        raise ValueError("layers must have the same length as X")
+
+    if len(phi_index) != len(X):
+        raise ValueError("phi_index must have the same length as X")
+
+    for layer in np.unique(layers):
+        layer = int(layer)
+        mask = layers == layer
+
+        if not np.any(mask):
+            continue
+
+        nphi = get_nphi(collection, layer)
+        delta_phi = 2.0 * np.pi / nphi
+
+        module = phi_index[mask] % nphi
+        phi_center = module * delta_phi
+
+        # ------------------------------------------------------------
+        # Special case: vertex barrel flat staves
+        # ------------------------------------------------------------
+        if collection == "VertexBarrelCollection":
+            layer_info = VERTEX_LAYERS[layer]
+
+            width = layer_info["width"]
+            half_width = width / 2.0
+            offset = layer_info["offset"]
+
+            r = X[mask, r_col]
+
+            if direction == "forward":
+                phi = X[mask, phi_col]
+
+                # Tangential coordinate relative to stave center.
+                # For a point (r, phi), projection on local tangent is:
+                #     tangent = r * sin(phi - phi_center) - offset
+                tangent = r * np.sin(wrap_to_pi(phi - phi_center)) - offset
+
+                # Normalize to roughly [-local_scale, local_scale]
+                X[mask, phi_col] = tangent / half_width * local_scale
+
+            elif direction == "reverse":
+                local = X[mask, phi_col]
+                tangent = local / local_scale * half_width
+
+                # Preserve r and solve:
+                #     tangent = r * sin(phi - phi_center) - offset
+                arg = (tangent + offset) / np.maximum(r, 1e-12)
+                arg = np.clip(arg, -1.0, 1.0)
+
+                phi = phi_center + np.arcsin(arg)
+                X[mask, phi_col] = wrap_to_pi(phi)
+
+            else:
+                raise ValueError("direction must be 'forward' or 'reverse'")
+
+            continue
+
+        # ------------------------------------------------------------
+        # All other collections: angular local coordinate
+        # ------------------------------------------------------------
         if direction == "forward":
-            phi_layer = phi[layer_mask]
+            phi = X[mask, phi_col]
+            dphi = wrap_to_pi(phi - phi_center)
 
-            phi_layer_wrapped = np.mod(phi_layer, 2 * np.pi)
-            sector_index = np.floor(phi_layer_wrapped / delta_phi).astype(int)
-            sector_coord = sector_index * delta_phi
-
-            phi_local = phi_layer_wrapped - sector_coord
-            X[layer_mask, 2] = phi_local / delta_phi * 0.1
+            # Normalize one sector width to roughly local_scale
+            X[mask, phi_col] = dphi / delta_phi * local_scale
 
         elif direction == "reverse":
-            local_phi = X[layer_mask, 2]
+            local = X[mask, phi_col]
+            dphi = local / local_scale * delta_phi
 
-            if phi_sector_index is not None:
-                module = phi_sector_index[layer_mask].astype(int)
-            else:
-                module = np.random.randint(
-                0,
-                n,
-                size=np.count_nonzero(layer_mask)
-            )
-        
-            if collection == "InnerTrackerBarrelCollection":
-                sector_coord = (module - 0.5) * delta_phi
-            elif collection == "OuterTrackerBarrelCollection":
-                sector_coord = (module - 0.5) * delta_phi
-            else:
-                sector_coord = module * delta_phi
-        
-            phi_global = sector_coord + local_phi / 0.1 * delta_phi
-            phi_global = (phi_global + np.pi) % (2 * np.pi) - np.pi
-        
-            X[layer_mask, 3] = phi_global
+            phi = phi_center + dphi
+            X[mask, phi_col] = wrap_to_pi(phi)
 
         else:
-            raise ValueError(f"direction must be 'forward' or 'reverse', got {direction}")
+            raise ValueError("direction must be 'forward' or 'reverse'")
 
     return X
-        
-
 
     
 def load_in_data(collection_list, features, working_dir, training_frac, num_cond_features=0, feature_order=None, num_files=1, use_local_phi=False):
@@ -136,7 +224,13 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
             # # plt.ylim(-50,200)
             # plt.show()
 
-            X = local_phi_transformation(X, layers, phi, collection)
+            X = local_phi_transformation(
+                X,
+                layers=X[:, 7],
+                phi_index=X[:, 8] if "Barrel" in collection else X[:, 9],
+                collection=collection,
+                direction="forward",
+            )
             # import matplotlib.pyplot as plt
         
             # plt.figure()
@@ -148,11 +242,19 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
     
             # plt.figure(figsize=(10,10))
             # plt.scatter(x, y, s = 0.01)
+            # plt.gca().set_aspect("equal", adjustable="box")
+
             # # plt.xlim(700,1600)
             # # plt.ylim(-50,200)
             # plt.show()
 
-            # X = local_phi_transformation(X, layers, phi, collection, phi_sector_index = phi_index, direction = "reverse")
+            # X = local_phi_transformation(
+            #     X,
+            #     layers=X[:, 7],
+            #     phi_index=X[:, 8] if "Barrel" in collection else X[:, 9],
+            #     collection=collection,
+            #     direction="reverse",
+            # )
             # import matplotlib.pyplot as plt
         
             # plt.figure()
@@ -164,6 +266,8 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
     
             # plt.figure(figsize=(15,15))
             # plt.scatter(x, y, s = 0.001)
+            # plt.gca().set_aspect("equal", adjustable="box")
+
             # # plt.xlim(700,1600)
             # # plt.ylim(-50,200)
             # plt.show()
