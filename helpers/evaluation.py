@@ -15,7 +15,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
-from helpers.plotting import plot_hists_1d
+from helpers.plotting import plot_hists_1d, plot_corner_hist_2d
 
 
 
@@ -78,9 +78,11 @@ def discriminate_data_from_samples(
     val_size=0.3,
     subsample_frac=None,  # optional subsample for large datasets,
     plot_dir=None,
+    evaluation_name="",
     verbose=False,
 ):
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    losses_name = f"losses_{evaluation_name}" if evaluation_name else "losses"
 
     with open(config_file, "r") as file:
         config_dict = yaml.safe_load(file)
@@ -161,7 +163,7 @@ def discriminate_data_from_samples(
                 plt.ylabel("Logloss")
                 plt.title(f"BDT Run {i+1} Logloss")
                 plt.legend()
-                plt.savefig(f"{plot_dir}/losses_{i}.png")
+                plt.savefig(f"{plot_dir}/{losses_name}_{i}.png")
                 plt.show()
                 plt.close()
 
@@ -227,7 +229,7 @@ def discriminate_data_from_samples(
                 plt.ylabel("Loss")
                 plt.title(f"DNN Run {i+1} Losses (Best epoch {best_epoch})")
                 plt.legend()
-                plt.savefig(f"{plot_dir}/losses_{i}.png")
+                plt.savefig(f"{plot_dir}/{losses_name}_{i}.png")
                 plt.show()
                 plt.close()
 
@@ -723,6 +725,52 @@ def run_eval_suite_R(data, samples_dict, R_values, NUM_BINS, plot_suffix=""):
             plt.show()
 
 
-        
-        
-        
+def run_eval_suite(reference, generated_samples, save_dir, evaluation_name, num_bins, num_bdts, device, subsample_frac, feature_labels=None, log_vars=()):
+    """Run plots, KS tests, and BDT discrimination for one coordinate representation."""
+    bins_dict = {}
+
+    for i in range(reference.shape[1]):
+        if i in log_vars:
+            bins_dict[i] = np.logspace(np.log10(0.9*np.min(reference[:,i])), np.log10(1.1*np.max(reference[:,i])), num_bins)
+        else:
+            bins_dict[i] = np.linspace(np.min(reference[:,i] - 1), np.max(reference[:,i] + 1), num_bins)
+
+    plot_hists_1d({"data":reference, "generated":generated_samples}, bins_dict, log_dims=log_vars, labels=feature_labels)
+    plt.savefig(f"{save_dir}/hists_{evaluation_name}.png")
+    plt.close()
+
+    fig_samp, axes_samp = plot_corner_hist_2d(
+        generated_samples,
+        feature_labels=feature_labels,
+        bins_dict=bins_dict,
+        log_dims=log_vars,
+        title="generated",
+    )
+    plt.savefig(f"{save_dir}/corner_generated_{evaluation_name}.png")
+    plt.close()
+
+    ks_dists_samples = get_kl_dist(reference, generated_samples)
+    ks_dists_gaussians = get_kl_dist(np.random.normal(size=reference.shape), np.random.normal(size=generated_samples.shape))
+
+    auc_mean, auc_std, best_epoch_list, max_epochs, _, _, _ = discriminate_data_from_samples(
+        reference,
+        generated_samples,
+        num_bdts,
+        "configs/bdt.yml",
+        model_type="bdt",
+        plot_losses=True,
+        device=device,
+        val_size=0.2,
+        subsample_frac=subsample_frac,
+        plot_dir=save_dir,
+        evaluation_name=evaluation_name,
+    )
+
+    with open(f"{save_dir}/results_{evaluation_name}.txt", "w") as ofile:
+        for i, ks_dist in enumerate(ks_dists_samples):
+            ofile.write("Feature {i} KL div: {ks_dist} (for gaussian: {ks_gauss})".format(i=i, ks_dist=ks_dist, ks_gauss=ks_dists_gaussians[i]))
+            ofile.write("\n")
+
+        ofile.write(f"auc {auc_mean} pm {auc_std}. best epoch {best_epoch_list} of {max_epochs}.\n")
+
+    return auc_mean, auc_std, best_epoch_list

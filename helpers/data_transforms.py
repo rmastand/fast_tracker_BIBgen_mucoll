@@ -4,12 +4,16 @@ import pickle
 
 epsilon = 1e-12
 
-import numpy as np
-
 from helpers.material_map import (
-    OUTER_LAYERS,
+    INNER_ENDCAP_DISKS,
     INNER_LAYERS,
+    OUTER_HALF_STACK,
+    OUTER_ENDCAP_DISKS,
+    OUTER_LAYERS,
+    VERTEX_DOUBLELAYER_GAP,
+    VERTEX_ENDCAP_DISKS,
     VERTEX_LAYERS,
+    VERTEX_SENSITIVE_THICKNESS,
     VERTEX_SUPPORT_THICKNESS,
 )
 
@@ -40,6 +44,138 @@ def get_nphi(collection, layer):
         return 16
 
     raise ValueError(f"Unknown collection: {collection}")
+
+#local_rphi transformation functions for each collection.
+
+def _module_centers(collection, layer, module, sensor):
+    """Return the radial and angular module centers for each hit."""
+    layer = np.rint(layer).astype(np.int64)
+    module = np.rint(module).astype(np.int64)
+    sensor = np.rint(sensor).astype(np.int64)
+
+    center_r = np.zeros(len(layer))
+    center_phi = np.zeros(len(layer))
+
+    if collection == "InnerTrackerBarrelCollection":
+        geometry = INNER_LAYERS
+        geometry_type = "inner_barrel"
+    elif collection == "OuterTrackerBarrelCollection":
+        geometry = OUTER_LAYERS
+        geometry_type = "outer_barrel"
+    elif collection == "VertexBarrelCollection":
+        geometry = VERTEX_LAYERS
+        geometry_type = "vertex_barrel"
+    elif collection == "InnerTrackerEndcapCollection":
+        geometry = INNER_ENDCAP_DISKS
+        geometry_type = "endcap"
+    elif collection == "OuterTrackerEndcapCollection":
+        geometry = OUTER_ENDCAP_DISKS
+        geometry_type = "endcap"
+    elif collection == "VertexEndcapCollection":
+        geometry = VERTEX_ENDCAP_DISKS
+        geometry_type = "endcap"
+    else:
+        raise ValueError(f"local_rphi is not implemented for {collection}.")
+
+    for layer_id in np.unique(layer):
+        layer_id = int(layer_id)
+        if layer_id not in geometry:
+            raise ValueError(f"Unknown layer {layer_id} for {collection}.")
+
+        mask = layer == layer_id
+        layer_info = geometry[layer_id]
+        nphi = get_nphi(collection, layer_id)
+
+        if geometry_type == "inner_barrel":
+            module_index = np.mod(module[mask], nphi)
+            center_r[mask] = np.where(
+                module_index % 2 == 0,
+                layer_info["rc"],
+                layer_info["rc"] + layer_info["dr"],
+            )
+            center_phi[mask] = 2.0 * np.pi * module_index / nphi
+
+        elif geometry_type == "outer_barrel":
+            module_index = np.mod(module[mask], nphi)
+            r_nominal = np.where(
+                module_index % 2 == 0,
+                layer_info["rc"] - layer_info["drp"],
+                layer_info["rc"] + layer_info["drm"],
+            )
+            center_r[mask] = (
+                r_nominal
+                - OUTER_HALF_STACK
+                + layer_info["sensor_offset"]
+            )
+            center_phi[mask] = 2.0 * np.pi * module_index / nphi
+
+        elif geometry_type == "vertex_barrel":
+            module_index = np.mod(module[mask], nphi)
+            module_phi = 2.0 * np.pi * module_index / nphi
+
+            r_inner = layer_info["r"] + VERTEX_SUPPORT_THICKNESS
+            r_outer = (
+                r_inner
+                + VERTEX_SENSITIVE_THICKNESS
+                + VERTEX_DOUBLELAYER_GAP
+            )
+            if layer_info.get("double", False) and layer_id == 1:
+                r_sensitive = r_outer
+            else:
+                r_sensitive = r_inner
+
+            offset = layer_info["offset"]
+            center_x = (
+                r_sensitive * np.cos(module_phi)
+                - offset * np.sin(module_phi)
+            )
+            center_y = (
+                r_sensitive * np.sin(module_phi)
+                + offset * np.cos(module_phi)
+            )
+            center_r[mask] = np.sqrt(center_x**2 + center_y**2)
+            center_phi[mask] = np.arctan2(center_y, center_x)
+
+        else:
+            sensor_index = np.mod(sensor[mask], nphi)
+            center_r[mask] = 0.5 * (
+                layer_info["rmin"] + layer_info["rmax"]
+            )
+            center_phi[mask] = 2.0 * np.pi * sensor_index / nphi
+
+    return center_r, center_phi
+
+
+def _shift_by_module_center(
+    X,
+    collection,
+    sign,
+    r_col=1,
+    phi_col=2,
+    layer_col=7,
+    module_col=8,
+    sensor_col=9,
+):
+    X = X.copy()
+    center_r, center_phi = _module_centers(
+        collection,
+        layer=X[:, layer_col],
+        module=X[:, module_col],
+        sensor=X[:, sensor_col],
+    )
+    X[:, r_col] = X[:, r_col] + sign * center_r
+    X[:, phi_col] = wrap_to_pi(X[:, phi_col] + sign * center_phi)
+    return X
+
+
+def to_local_rphi(X, collection, **kwargs):
+    """Convert global r-phi coordinates to module-relative coordinates."""
+    return _shift_by_module_center(X, collection, sign=-1, **kwargs)
+
+
+def from_local_rphi(X, collection, **kwargs):
+    """Convert module-relative r-phi coordinates back to global coordinates."""
+    return _shift_by_module_center(X, collection, sign=+1, **kwargs)
 
 
 def local_phi_transformation(
@@ -160,8 +296,40 @@ def local_phi_transformation(
 
     return X
 
-    
-def load_in_data(collection_list, features, working_dir, training_frac, num_cond_features=0, feature_order=None, num_files=1, use_local_phi=False):
+def inverse_geometry_transform(X, basis, collection, feature_order=None):
+    # Preserve FEATURE_ORDER; local inverses require r, phi, layer, module, and sensor.
+    if basis not in {"local_phi", "local_rphi"}:
+        return X.copy()
+
+    original_order = list(range(X.shape[1])) if feature_order is None else list(feature_order)
+    r_col = original_order.index(1)
+    phi_col = original_order.index(2)
+    layer_col = original_order.index(7)
+    module_col = original_order.index(8)
+    sensor_col = original_order.index(9)
+
+    if basis == "local_rphi":
+        return from_local_rphi(
+            X,
+            collection,
+            r_col=r_col,
+            phi_col=phi_col,
+            layer_col=layer_col,
+            module_col=module_col,
+            sensor_col=sensor_col,
+        )
+
+    return local_phi_transformation(
+        X,
+        layers=X[:, layer_col],
+        phi_index=X[:, module_col] if "Barrel" in collection else X[:, sensor_col],
+        collection=collection,
+        direction="reverse",
+        r_col=r_col,
+        phi_col=phi_col,
+    )
+
+def load_in_data(collection_list, features, working_dir, training_frac, num_cond_features=0, feature_order=None, num_files=1, use_local_phi=False, use_local_rphi=False):
         
     X = []
     layers = []
@@ -198,7 +366,7 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
    
     X[:,0] = np.log(X[:,0]) #preprocess the energy
 
-    if features == "rphi":
+    if features in ["rphi", "local_phi", "local_rphi"]:
         r = np.sqrt(X[:, 1]**2 + X[:, 2]**2)
         phi = np.arctan2(X[:, 2], X[:, 1])
         X[:,1] = r
@@ -206,8 +374,11 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
 
        
         
+        if features == "local_rphi" or use_local_rphi:
+            X = to_local_rphi(X, collection_list[0])
+            feature_labels = ["log($E$) [Gev]", "$r$ (local) [mm]", r"$\phi$ (local)", "$z$ [mm]", "$t$ [s]", "system", "side", "layer", "module", "sensor"]
 
-        if use_local_phi:
+        elif features == "local_phi" or use_local_phi:
 
             # import matplotlib.pyplot as plt
         
