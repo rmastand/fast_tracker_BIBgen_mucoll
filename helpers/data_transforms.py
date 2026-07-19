@@ -341,11 +341,11 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
             
             
             if num_cond_features == 0:
-                tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit_reco_{r}.npy")
+                tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit_conditional_reco9_{r}.npy")
                 
                 X.append(tmp_data[:int(len(tmp_data)*training_frac)])
             elif num_cond_features > 0:
-                tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit_conditional_reco_{r}.npy")
+                tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit_conditional_reco9_{r}.npy")
 
                 X.append(tmp_data[:int(len(tmp_data)*training_frac)])
 
