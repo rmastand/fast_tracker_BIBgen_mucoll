@@ -131,14 +131,16 @@ else:
 os.makedirs(save_dir, exist_ok=True)
 wandb_dir = f"{args.WORKING_DIR}/wandb"
 os.makedirs(wandb_dir, exist_ok=True)
-wandb_config = vars(args).copy()
-if args.MODEL != "flow":
-    wandb_config.pop("ZUKO_ID")
+# Keep W&B and saved configs limited to parameters used by the selected model
+flow_only_args = "ZUKO_ID OVERSAMPLE NUM_EPOCHS TRANSFORMS HIDDEN_FEATURES FREQS BINS DEGREE POLYNOMIALS PLOT_EPOCH_INTERVAL CHECKPOINT_EPOCH_INTERVAL TRAIN_FLOW EVAL_FLOW".split()
+tabddpm_only_args = "STEPS WEIGHT_DECAY NUM_TIMESTEPS SAMPLE_BATCH_SIZE SCHEDULER D_LAYERS DIM_T NORMALIZATION Y_MODE TRAIN_TABDDPM EVAL_TABDDPM".split()
+unused_args = tabddpm_only_args if args.MODEL == "flow" else flow_only_args
+run_config = {key:value for key, value in vars(args).items() if key not in unused_args}
 
 wandb.init(
     project="muon_collider",
     name=args.NAME,
-    config=wandb_config,
+    config=run_config,
     dir=wandb_dir
 )
 
@@ -322,7 +324,6 @@ if args.MODEL == "tabddpm":
         "y_policy": "default",
     }
 # Save the resolved run configuration before training
-run_config = vars(args).copy()
 run_config["feature_labels"] = feature_labels
 run_config["num_features"] = int(NUM_FEATURES)
 

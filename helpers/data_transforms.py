@@ -359,8 +359,9 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
         
     
     X = np.vstack(X)
-    layers = np.concatenate(layers).reshape(-1)
-    phi_index = np.concatenate(phi_index).reshape(-1)
+    if num_cond_features > 0:
+        layers = np.concatenate(layers).reshape(-1)
+        phi_index = np.concatenate(phi_index).reshape(-1)
 
     
    
