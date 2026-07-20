@@ -131,10 +131,14 @@ else:
 os.makedirs(save_dir, exist_ok=True)
 wandb_dir = f"{args.WORKING_DIR}/wandb"
 os.makedirs(wandb_dir, exist_ok=True)
+wandb_config = vars(args).copy()
+if args.MODEL != "flow":
+    wandb_config.pop("ZUKO_ID")
+
 wandb.init(
     project="muon_collider",
     name=args.NAME,
-    config=vars(args),             # logs all argparse params
+    config=wandb_config,
     dir=wandb_dir
 )
 
