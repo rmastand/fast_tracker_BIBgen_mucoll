@@ -422,8 +422,8 @@ X_val = preprocess_data(X_val, save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS, sca
 print(f"Train data has shape {X_train.shape}.")
 print(f"Val data has shape {X_val.shape}.")
 
-train_loader = torch.utils.data.DataLoader(X_train, batch_size=args.BATCH_SIZE, shuffle=True, num_workers = 0, pin_memory = True)
-val_loader = torch.utils.data.DataLoader(X_val, batch_size=args.BATCH_SIZE, shuffle=False, num_workers = 0, pin_memory = True)
+train_loader = torch.utils.data.DataLoader(X_train, batch_size=args.BATCH_SIZE, shuffle=True, num_workers = 8, pin_memory = True)
+val_loader = torch.utils.data.DataLoader(X_val, batch_size=args.BATCH_SIZE, shuffle=False, num_workers = 8, pin_memory = True)
 
 # %%
 import zuko
@@ -617,7 +617,9 @@ if args.TRAIN_FLOW:
                 ),
             }
             plot_hists_1d(loc_data_dict, bins_dict, log_dims=log_vars, labels=feature_labels)
-            plt.savefig(f"{save_dir}/hists")
+            hists_plot_path = f"{save_dir}/hists.png"
+            plt.savefig(hists_plot_path)
+            wandb.log({"hists": wandb.Image(hists_plot_path)})
             plt.close()
 
             # for key in loc_data_dict.keys():
