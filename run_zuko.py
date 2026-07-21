@@ -221,11 +221,6 @@ plt.close()
 # plot_hists_1d({"data":X_preproc}, bins_dict_preproc, log_dims=[], labels = feature_labels)
 # plt.show()
 
-# %%
-# train val split
-
-X_train, X_val, train_indices, val_indices = train_test_split(X, np.arange(len(X)), test_size=0.2, random_state=42)
-
 def pack_condition_rows(condition):
     """Map each unique condition row to a TabDDPM class index."""
     condition = np.asarray(condition)
@@ -240,6 +235,17 @@ def pack_condition_rows(condition):
     )
 
     return condition_ids.astype(np.int64), unique_rows.astype(np.float32)
+
+# %%
+# train val split
+
+# Stratify TabDDPM splits so every condition class remains represented.
+stratify_labels = None
+stratify_lookup = None
+if args.MODEL == "tabddpm" and args.Y_MODE != "none":
+    stratify_labels, stratify_lookup = pack_condition_rows(X[:, NUM_FEATURES:])
+
+X_train, X_val, train_indices, val_indices = train_test_split(X, np.arange(len(X)), test_size=0.2, random_state=42, stratify=stratify_labels)
 
 def export_tabddpm_dataset(dataset_dir, X_num, y, train_indices, val_indices):
     """Write the NumPy splits and metadata required by the official TabDDPM loader."""
@@ -287,7 +293,7 @@ if args.MODEL == "tabddpm":
         y_lookup = None
     else:
         X_num = X[:, :NUM_FEATURES].astype(np.float32)
-        y_values, y_lookup = pack_condition_rows(X[:, NUM_FEATURES:])
+        y_values, y_lookup = stratify_labels, stratify_lookup
         np.save(Path(save_dir) / "y_lookup.npy", y_lookup)
 
     is_y_cond = args.Y_MODE == "cond"
@@ -653,7 +659,7 @@ if args.EVAL_FLOW:
             ).to(device)
 
 
-        loc_samples = sample_from_flow(eval_flow, N=args.OVERSAMPLE, x_context=context_to_sample if args.NUM_COND_INPUTS > 0 else None)
+        loc_samples = sample_from_flow(eval_flow, N=(nn * args.OVERSAMPLE) if args.NUM_COND_INPUTS == 0 else args.OVERSAMPLE, x_context=context_to_sample if args.NUM_COND_INPUTS > 0 else None)
 
 
         samples.append(loc_samples)
