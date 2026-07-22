@@ -329,33 +329,38 @@ def inverse_geometry_transform(X, basis, collection, feature_order=None):
         phi_col=phi_col,
     )
 
-def load_in_data(collection_list, features, working_dir, training_frac, num_cond_features=0, feature_order=None, num_files=1, use_local_phi=False, use_local_rphi=False):
+def load_in_data(
+        collection_list, 
+        features, 
+        data_dir, 
+        training_frac, 
+        num_cond_features=0, 
+        feature_order=None, 
+        ):
         
     X = []
     layers = []
     phi_index = []
     
     for i, collection in enumerate(collection_list):
-        for r in range(num_files):
 
+             
+        if num_cond_features == 0:
+            tmp_data = np.load(f"{data_dir}/{collection}_SimTrackerHit_conditional_reco_{r}.npy")
             
+            X.append(tmp_data[:int(len(tmp_data)*training_frac)])
+        elif num_cond_features > 0:
+            tmp_data = np.load(f"{data_dir}/{collection}_SimTrackerHit_conditional_reco_{r}.npy")
+
+            X.append(tmp_data[:int(len(tmp_data)*training_frac)])
+
+            # side, layer, module, sensor starting from index 6
+            layers.append(tmp_data[:int(len(tmp_data)*training_frac),7])
+            if "Barrel" in collection:
+                phi_index.append(tmp_data[:int(len(tmp_data)*training_frac),8]) # module defines the phi
+            elif "Endcap" in collection:
+                phi_index.append(tmp_data[:int(len(tmp_data)*training_frac),9]) # sensor defines the phi
             
-            if num_cond_features == 0:
-                tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit_conditional_reco9_{r}.npy")
-                
-                X.append(tmp_data[:int(len(tmp_data)*training_frac)])
-            elif num_cond_features > 0:
-                tmp_data = np.load(f"{working_dir}/npys/nuGun_pT_0_50/{collection}_SimTrackerHit_conditional_reco9_{r}.npy")
-
-                X.append(tmp_data[:int(len(tmp_data)*training_frac)])
-
-                # side, layer, module, sensor starting from index 6
-                layers.append(tmp_data[:int(len(tmp_data)*training_frac),7])
-                if "Barrel" in collection:
-                    phi_index.append(tmp_data[:int(len(tmp_data)*training_frac),8]) # module defines the phi
-                elif "Endcap" in collection:
-                    phi_index.append(tmp_data[:int(len(tmp_data)*training_frac),9]) # sensor defines the phi
-               
         
     
     X = np.vstack(X)
@@ -375,11 +380,11 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
 
        
         
-        if features == "local_rphi" or use_local_rphi:
+        if features == "local_rphi":
             X = to_local_rphi(X, collection_list[0])
             feature_labels = ["log($E$) [Gev]", "$r$ (local) [mm]", r"$\phi$ (local)", "$z$ [mm]", "$t$ [s]", "system", "side", "layer", "module", "sensor"]
 
-        elif features == "local_phi" or use_local_phi:
+        elif features == "local_phi" :
 
             # import matplotlib.pyplot as plt
         
@@ -465,19 +470,19 @@ def load_in_data(collection_list, features, working_dir, training_frac, num_cond
 
 
 
-def logit_transform(x, all_min, all_max, cushion ):
+# def logit_transform(x, all_min, all_max, cushion ):
     
-    x_norm = (x-all_min)/(all_max-all_min)
-    x_norm = (1.0 - 2.0*cushion)*x_norm + cushion
-    logit_arguments = (x_norm/(1.0-x_norm+epsilon)) + epsilon
+#     x_norm = (x-all_min)/(all_max-all_min)
+#     x_norm = (1.0 - 2.0*cushion)*x_norm + cushion
+#     logit_arguments = (x_norm/(1.0-x_norm+epsilon)) + epsilon
     
-    num_invalid_entries = sum(logit_arguments <= 0)
-    if num_invalid_entries > 0:
-        print("Invalid log. Try again with larger cushion")
-        return None
-    else:
-        logit = np.log(x_norm/(1.0-x_norm+epsilon) + epsilon)
-        return logit
+#     num_invalid_entries = sum(logit_arguments <= 0)
+#     if num_invalid_entries > 0:
+#         print("Invalid log. Try again with larger cushion")
+#         return None
+#     else:
+#         logit = np.log(x_norm/(1.0-x_norm+epsilon) + epsilon)
+#         return logit
 
 
 
@@ -552,14 +557,14 @@ def inverse_preprocess_data(X_preproc, flow_training_dir, ZUKO_ID, num_cond_feat
     
     return np.hstack([X, X_context]) if num_cond_features > 0 else X
 
-def unscale_mass(scaled_x, SB_left, SB_right):
+# def unscale_mass(scaled_x, SB_left, SB_right):
     
-    unscaled_x =  scaled_x*preproc_info["std"] + preproc_info["mean"]
-    #inverse logit
-    x_norm = np.exp(unscaled_x) / (1.0 + np.exp(unscaled_x))
-    x_norm = (x_norm - 0.01) / 0.98
+#     unscaled_x =  scaled_x*preproc_info["std"] + preproc_info["mean"]
+#     #inverse logit
+#     x_norm = np.exp(unscaled_x) / (1.0 + np.exp(unscaled_x))
+#     x_norm = (x_norm - 0.01) / 0.98
     
-    return x_norm*(preproc_info["max"]-preproc_info["min"]) + preproc_info["min"]
+#     return x_norm*(preproc_info["max"]-preproc_info["min"]) + preproc_info["min"]
 
 
 def clean_data(x):
@@ -569,50 +574,88 @@ def clean_data(x):
     
     return remove_inf
 
-def bootstrap_array(data_array, seed):
-    np.random.seed(seed)
-    indices_to_take = np.random.choice(range(data_array.shape[0]), size = data_array.shape[0], replace = True) 
-    return data_array[indices_to_take]
+# def bootstrap_array(data_array, seed):
+#     np.random.seed(seed)
+#     indices_to_take = np.random.choice(range(data_array.shape[0]), size = data_array.shape[0], replace = True) 
+#     return data_array[indices_to_take]
 
 
 
 
-def inverse_preprocess_data_torch(X_preproc, flow_training_dir, ZUKO_ID, num_cond_features=0):
-    import torch
+# def inverse_preprocess_data_torch(X_preproc, flow_training_dir, ZUKO_ID, num_cond_features=0):
+#     import torch
 
-    if num_cond_features > 0:
-        X_to_unpreproc = X_preproc[:, :-num_cond_features]
-        X_context = X_preproc[:, -num_cond_features:]
-    else:
-        X_to_unpreproc = X_preproc
-        X_context = None
+#     if num_cond_features > 0:
+#         X_to_unpreproc = X_preproc[:, :-num_cond_features]
+#         X_context = X_preproc[:, -num_cond_features:]
+#     else:
+#         X_to_unpreproc = X_preproc
+#         X_context = None
 
-    device = X_preproc.device
-    dtype = X_preproc.dtype
+#     device = X_preproc.device
+#     dtype = X_preproc.dtype
 
-    if ZUKO_ID in ["UNAF", "NCSF"]:
-        with open(f"{flow_training_dir}/minmax", "rb") as ifile:
-            scaler = pickle.load(ifile)
+#     if ZUKO_ID in ["UNAF", "NCSF"]:
+#         with open(f"{flow_training_dir}/minmax", "rb") as ifile:
+#             scaler = pickle.load(ifile)
 
-        data_min = torch.tensor(scaler.data_min_, device=device, dtype=dtype)
-        data_max = torch.tensor(scaler.data_max_, device=device, dtype=dtype)
+#         data_min = torch.tensor(scaler.data_min_, device=device, dtype=dtype)
+#         data_max = torch.tensor(scaler.data_max_, device=device, dtype=dtype)
 
-        feature_min = -np.pi
-        feature_max = np.pi
+#         feature_min = -np.pi
+#         feature_max = np.pi
 
-        X = (X_to_unpreproc - feature_min) / (feature_max - feature_min)
-        X = X * (data_max - data_min) + data_min
+#         X = (X_to_unpreproc - feature_min) / (feature_max - feature_min)
+#         X = X * (data_max - data_min) + data_min
 
-    else:
-        with open(f"{flow_training_dir}/standard", "rb") as ifile:
-            scaler = pickle.load(ifile)
+#     else:
+#         with open(f"{flow_training_dir}/standard", "rb") as ifile:
+#             scaler = pickle.load(ifile)
 
-        mean = torch.tensor(scaler.mean_, device=device, dtype=dtype)
-        scale = torch.tensor(scaler.scale_, device=device, dtype=dtype)
+#         mean = torch.tensor(scaler.mean_, device=device, dtype=dtype)
+#         scale = torch.tensor(scaler.scale_, device=device, dtype=dtype)
 
-        X = X_to_unpreproc * scale + mean
+#         X = X_to_unpreproc * scale + mean
 
-    if num_cond_features > 0:
-        return torch.cat([X, X_context], dim=1)
+#     if num_cond_features > 0:
+#         return torch.cat([X, X_context], dim=1)
 
-    return X
+#     return X
+
+
+def export_dataset(dataset_dir, X_num, y, train_indices, val_indices):
+    """Write the NumPy splits and metadata required by the official TabDDPM loader."""
+    dataset_dir = Path(dataset_dir)
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+
+    n_classes = len(np.unique(y))
+    X_train = X_num[train_indices]
+    X_val = X_num[val_indices]
+    y_train = y[train_indices]
+    y_val = y[val_indices]
+
+    np.save(dataset_dir / "X_num_train.npy", X_train.astype(np.float32))
+    np.save(dataset_dir / "X_num_val.npy", X_val.astype(np.float32))
+    # The official loader expects a test split; reuse validation for 80/20.
+    np.save(dataset_dir / "X_num_test.npy", X_val.astype(np.float32))
+
+    np.save(dataset_dir / "y_train.npy", y_train.astype(np.int64))
+    np.save(dataset_dir / "y_val.npy", y_val.astype(np.int64))
+    np.save(dataset_dir / "y_test.npy", y_val.astype(np.int64))
+
+    info = {
+        "name": dataset_dir.parent.name,
+        "id": dataset_dir.parent.name,
+        "task_type": "binclass" if n_classes == 2 else "multiclass",
+        "n_num_features": int(X_num.shape[1]),
+        "n_cat_features": 0,
+        "train_size": int(len(X_train)),
+        "val_size": int(len(X_val)),
+        "test_size": int(len(X_val)),
+        "n_classes": int(n_classes),
+    }
+
+    with open(dataset_dir / "info.json", "w", encoding="utf-8") as output_file:
+        json.dump(info, output_file, indent=2)
+
+    return n_classes

@@ -6,7 +6,6 @@ from scipy.stats import ks_2samp, wasserstein_distance
 from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
 from sklearn.model_selection import train_test_split
 import numpy as np
-from numba import njit, prange
 
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
@@ -440,97 +439,97 @@ def get_delta_R_neighbors(data_array, R, NN):
     return neighbor_counts
 
     
-@njit
-def get_delta_R_neighbors_numba_exact(data_array, R, features):
-    # Extract coordinates
+# @njiy
+# def get_delta_R_neighbors_numba_exact(data_array, R, features):
+#     # Extract coordinates
 
-    if features == "xy":
-        x = data_array[:, 1]
-        y = data_array[:, 2]
-        z = data_array[:, 3]
+#     if features == "xy":
+#         x = data_array[:, 1]
+#         y = data_array[:, 2]
+#         z = data_array[:, 3]
     
-        # Convert to eta, phi
-        phi = np.arctan2(y, x)
-        rT = np.sqrt(x**2 + y**2)
-        eta = np.arcsinh(z / rT)
+#         # Convert to eta, phi
+#         phi = np.arctan2(y, x)
+#         rT = np.sqrt(x**2 + y**2)
+#         eta = np.arcsinh(z / rT)
 
-    elif features == "rphi":
-        r = data_array[:, 1]
-        phi = data_array[:, 2]
-        z = data_array[:, 3]
+#     elif features == "rphi":
+#         r = data_array[:, 1]
+#         phi = data_array[:, 2]
+#         z = data_array[:, 3]
     
-        # Convert to eta, phi
-        eta = np.arcsinh(z / r)
+#         # Convert to eta, phi
+#         eta = np.arcsinh(z / r)
 
-    N = len(eta)
+#     N = len(eta)
 
-    # Bin size ~ ΔR
-    deta =  R
-    dphi =  R
-    eta_min = eta.min()
-    phi_min = -np.pi
+#     # Bin size ~ ΔR
+#     deta =  R
+#     dphi =  R
+#     eta_min = eta.min()
+#     phi_min = -np.pi
 
-    eta_bin = np.floor((eta - eta_min) / deta).astype(np.int64)
-    phi_bin = np.floor((phi - phi_min) / dphi).astype(np.int64)
+#     eta_bin = np.floor((eta - eta_min) / deta).astype(np.int64)
+#     phi_bin = np.floor((phi - phi_min) / dphi).astype(np.int64)
 
-    # Number of bins
-    n_eta_bins = eta_bin.max() + 1
-    n_phi_bins = phi_bin.max() + 1
-    n_bins = n_eta_bins * n_phi_bins
+#     # Number of bins
+#     n_eta_bins = eta_bin.max() + 1
+#     n_phi_bins = phi_bin.max() + 1
+#     n_bins = n_eta_bins * n_phi_bins
 
-    # Count points per bin
-    bin_counts = np.zeros(n_bins, dtype=np.int64)
-    for i in range(N):
-        # get the flattened bin index of element i
-        b = eta_bin[i] * n_phi_bins + phi_bin[i]
-        bin_counts[b] += 1
+#     # Count points per bin
+#     bin_counts = np.zeros(n_bins, dtype=np.int64)
+#     for i in range(N):
+#         # get the flattened bin index of element i
+#         b = eta_bin[i] * n_phi_bins + phi_bin[i]
+#         bin_counts[b] += 1
 
-    # Compute start indices (cumulative sum)
-    bin_start = np.zeros(n_bins + 1, dtype=np.int64)
-    total = 0
-    for b in range(n_bins):
-        bin_start[b] = total
-        total += bin_counts[b]
-    bin_start[n_bins] = total
+#     # Compute start indices (cumulative sum)
+#     bin_start = np.zeros(n_bins + 1, dtype=np.int64)
+#     total = 0
+#     for b in range(n_bins):
+#         bin_start[b] = total
+#         total += bin_counts[b]
+#     bin_start[n_bins] = total
 
-    # Flattened array storing all points
-    bin_points = np.zeros(N, dtype=np.int64) # index of element i with respect to the flattened bins
-    temp_count = np.zeros(n_bins, dtype=np.int64)
-    for i in range(N):
-        b = eta_bin[i] * n_phi_bins + phi_bin[i]
-        idx = bin_start[b] + temp_count[b]
-        bin_points[idx] = i
-        temp_count[b] += 1
+#     # Flattened array storing all points
+#     bin_points = np.zeros(N, dtype=np.int64) # index of element i with respect to the flattened bins
+#     temp_count = np.zeros(n_bins, dtype=np.int64)
+#     for i in range(N):
+#         b = eta_bin[i] * n_phi_bins + phi_bin[i]
+#         idx = bin_start[b] + temp_count[b]
+#         bin_points[idx] = i
+#         temp_count[b] += 1
 
-    # Neighbor counting
-    neighbor_counts = np.zeros(N, dtype=np.int64)
-    for i in range(N):
-        eb = eta_bin[i]
-        pb = phi_bin[i]
+#     # Neighbor counting
+#     neighbor_counts = np.zeros(N, dtype=np.int64)
+#     for i in range(N):
+#         eb = eta_bin[i]
+#         pb = phi_bin[i]
 
-        # exactly 3x3 neighbor bins
-        for de in [-1, 0, 1]:
-            for dp in [-1, 0, 1]:
-                ebi = eb + de
-                pbi = pb + dp
-                if ebi < 0 or ebi >= n_eta_bins or pbi < 0 or pbi >= n_phi_bins:
-                    continue
+#         # exactly 3x3 neighbor bins
+#         for de in [-1, 0, 1]:
+#             for dp in [-1, 0, 1]:
+#                 ebi = eb + de
+#                 pbi = pb + dp
+#                 if ebi < 0 or ebi >= n_eta_bins or pbi < 0 or pbi >= n_phi_bins:
+#                     continue
 
-                # indices of points in this neighbor bin
-                start = bin_start[ebi * n_phi_bins + pbi]
-                end = bin_start[ebi * n_phi_bins + pbi + 1]
-                for k in range(start, end):
-                    j = bin_points[k]
-                    if j == i:
-                        continue
-                    d_eta = eta[j] - eta[i]
-                    d_phi = phi[j] - phi[i]
-                    d_phi = (d_phi + np.pi) % (2 * np.pi) - np.pi
-                    dR = np.sqrt(d_eta ** 2 + d_phi ** 2)
-                    if dR <= R:
-                        neighbor_counts[i] += 1
+#                 # indices of points in this neighbor bin
+#                 start = bin_start[ebi * n_phi_bins + pbi]
+#                 end = bin_start[ebi * n_phi_bins + pbi + 1]
+#                 for k in range(start, end):
+#                     j = bin_points[k]
+#                     if j == i:
+#                         continue
+#                     d_eta = eta[j] - eta[i]
+#                     d_phi = phi[j] - phi[i]
+#                     d_phi = (d_phi + np.pi) % (2 * np.pi) - np.pi
+#                     dR = np.sqrt(d_eta ** 2 + d_phi ** 2)
+#                     if dR <= R:
+#                         neighbor_counts[i] += 1
 
-    return neighbor_counts
+#     return neighbor_counts
 
 
 
@@ -774,3 +773,23 @@ def run_eval_suite(reference, generated_samples, save_dir, evaluation_name, num_
         ofile.write(f"auc {auc_mean} pm {auc_std}. best epoch {best_epoch_list} of {max_epochs}.\n")
 
     return auc_mean, auc_std, best_epoch_list
+
+
+def evaluate_samples(samples, samples_global):
+    evaluations = [(args.BASIS, X, samples, feature_labels)]
+
+    if args.BASIS in ["local_phi", "local_rphi"]:
+        evaluations.append(("global", X_global, samples_global, global_feature_labels))
+
+    for evaluation_name, reference, generated, labels in evaluations:
+        auc_mean, auc_std, best_epoch_list = run_eval_suite(reference, generated, save_dir, evaluation_name, NUM_BINS, args.NUM_BDTS, device, args.BDT_SUBSAMPLE_FRAC, labels, log_vars)
+        prefix = "global_" if evaluation_name == "global" else ""
+
+        wandb.log({
+            f"{prefix}auc_mean": auc_mean,
+            f"{prefix}auc_std": auc_std,
+            f"{prefix}bdt_best_epoch": np.mean(best_epoch_list),
+        })
+
+        wandb.run.summary[f"{prefix}auc_mean"] = auc_mean
+        wandb.run.summary[f"{prefix}auc_std"] = auc_std

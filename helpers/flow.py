@@ -1,6 +1,67 @@
 import numpy as np
 import torch
 
+
+def run_training_step(data_loader, epoch, global_step, is_val_step=False):
+    flow.eval() if is_val_step else flow.train()
+
+    text_desc = "val" if is_val_step else "train"
+    losses_ll, losses_mmap, losses_total = [], [], []
+    bad_fracs = []
+
+    pbar = tqdm(data_loader, desc=f"{text_desc} batches", leave=False)
+
+    for x in pbar:
+        if not is_val_step:
+            optimizer.zero_grad()
+
+        x = x.to(device).float()
+
+        if args.NUM_COND_INPUTS > 0:
+            x_data = x[:, :-args.NUM_COND_INPUTS]
+            x_context = x[:, -args.NUM_COND_INPUTS:]
+            dist = flow(x_context)
+            #loss_ll = -dist.log_prob(x_data).mean()
+        else:
+            x_data = x
+            x_context = None
+            dist = flow()
+            #loss_ll = -dist.log_prob(x_data).mean()
+
+
+        # -----------------------------
+        # Log likelihood loss
+        # -----------------------------
+        log_prob = dist.log_prob(x_data)
+        loss_ll = -log_prob.mean()
+
+
+
+        total_loss = loss_ll
+
+        if not is_val_step:
+  
+            total_loss.backward()
+            torch.nn.utils.clip_grad_norm_(flow.parameters(), 5.0)
+            optimizer.step()
+
+            global_step += 1
+
+
+        losses_ll.append(loss_ll.item())
+        losses_total.append(total_loss.item())
+
+        pbar.set_postfix(loss=f"{total_loss.item():.3e}")
+
+    metrics = {
+        f"{text_desc}/ll": np.mean(losses_ll),
+        f"{text_desc}/total": np.mean(losses_total),
+    }
+
+    return metrics, global_step
+
+
+
 def sample_from_flow(flow, N, x_context=None):
     flow.eval()
 
