@@ -34,14 +34,6 @@ for path in (str(TABDDPM_ROOT), str(TABDDPM_SCRIPTS)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-
-if args.MODEL == "flow":
-    import zuko
-elif args.MODEL == "tabddpm":
-    from sample import sample as tabddpm_sample
-    from train import train as tabddpm_train
-
-
 # shiyu I had to override your last commit
 
 
@@ -111,12 +103,21 @@ parser.add_argument("--Y_MODE", choices=["cond", "joint", "none"], default="cond
 args = parser.parse_args()
 
 
+
+
+
+
+
+
+
 # %%
 if args.MODEL == "flow":
     save_dir = f"{args.WORKING_DIR}/zuko_outputs/{args.NAME}"
-else:
+    import zuko
+elif args.MODEL == "tabddpm":
     save_dir = f"{args.WORKING_DIR}/ddpm_outputs/{args.NAME}"
-
+    from sample import sample as tabddpm_sample
+    from train import train as tabddpm_train
 
 os.makedirs(save_dir, exist_ok=True)
 wandb_dir = f"{args.WANDB_DIR}"
