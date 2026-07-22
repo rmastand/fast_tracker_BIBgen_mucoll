@@ -9,7 +9,7 @@ def run_training_step(flow, optimizer, data_loader, device, epoch, num_cond_inpu
     text_desc = "val" if is_val_step else "train"
     losses_total = []
 
-    pbar = tqdm(data_loader, desc=f"epoch {epoch} {text_desc} batches", leave=False)
+    pbar = tqdm(data_loader, desc=f"     epoch {epoch} {text_desc} batches", leave=False)
 
     for x in pbar:
         if not is_val_step:

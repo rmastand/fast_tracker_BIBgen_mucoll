@@ -10,14 +10,14 @@ import os
 import torch
 import argparse
 import wandb
-import zuko
 from helpers.models.DNN import count_parameters
 from helpers.data_transforms import (
     preprocess_data,
     inverse_preprocess_data,
     load_in_data,
     inverse_geometry_transform,
-    export_dataset
+    export_dataset,
+    pack_condition_rows
 )
 from helpers.evaluation import evaluate_samples
 from helpers.flow import run_training_step, sample_from_flow
@@ -34,12 +34,7 @@ for path in (str(TABDDPM_ROOT), str(TABDDPM_SCRIPTS)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-# shiyu I had to override your last commit
-
-
-# TabDDPM official training and sampling entry points
-
-# %%
+# shiyu can you adjust the printouts for your model
 
 
 BIN_BOUND = 5
@@ -63,7 +58,7 @@ parser.add_argument("--SAVE_DIR", default="/scratch/midway3/rmastand/muon_collid
 parser.add_argument("--WANDB_DIR", default="/scratch/midway3/rmastand/wandb", type=str, help="Where to store model outputs and plots")
 parser.add_argument("--DATA_DIR", default="/scratch/midway3/rmastand/muon_collider/nuGun_pT_0_50/reco_h5", type=str, help="Where to store model outputs and plots")
 parser.add_argument("--OVERSAMPLE", default=1, type=int)
-
+# shiyu are you using this argument 
 # data + evaluation
 parser.add_argument("--COLLECTION_LIST", type=str, default="OuterTrackerBarrelCollection")
 parser.add_argument("--BASIS", choices=["xy", "rphi", "local_phi", "local_rphi"], default="rphi", help="Coordinate basis used for training")
@@ -71,7 +66,7 @@ parser.add_argument("--FEATURE_ORDER", default=None, help="Comma-separated list 
 parser.add_argument("--TRAIN", action="store_true", help="Whether to train the flow")
 parser.add_argument("--EVAL", action="store_true", help="Whether to evaluate the flow after training")
 parser.add_argument("--NUM_BDTS", type=int, default=5, help="For sample evaluation")
-parser.add_argument("--BDT_SUBSAMPLE_FRAC", type=float, default=0.25, help="Evaluation subsample fraction")
+parser.add_argument("--BDT_SUBSAMPLE_FRAC", type=float, default=1.0, help="Evaluation subsample fraction")
 parser.add_argument("--SEED", type=int, default=8, help="Random seed")  # shiyu: do you have a random seed?
 parser.add_argument("--TRAINING_FRAC", type=float, default=1.0, help="How much training data to use")
 
@@ -91,7 +86,7 @@ parser.add_argument("--PLOT_EPOCH_INTERVAL", type=int, default=1, help="Interval
 
 
 # TabDDPM-specific arguments
-parser.add_argument("--STEPS", type=int, default=5000, help="Number of TabDDPM training steps")
+parser.add_argument("--STEPS", type=int, default=5, help="Number of TabDDPM training steps")
 parser.add_argument("--WEIGHT_DECAY", type=float, default=0.0, help="TabDDPM optimizer weight decay")
 parser.add_argument("--NUM_TIMESTEPS", type=int, default=100, help="Number of diffusion timesteps")
 parser.add_argument("--SAMPLE_BATCH_SIZE", type=int, default=4096, help="TabDDPM sampling batch size")
@@ -110,6 +105,7 @@ if args.MODEL == "flow":
     import zuko
 elif args.MODEL == "tabddpm":
     save_dir = f"{args.SAVE_DIR}/ddpm_outputs/{args.NAME}"
+    # TabDDPM official training and sampling entry points
     from sample import sample as tabddpm_sample
     from train import train as tabddpm_train
 
@@ -180,9 +176,7 @@ fig_samp, axes_samp = plot_corner_hist_2d(
 plt.savefig(f"{save_dir}/data_final")
 plt.close()
 
-
 if args.MODEL == "tabddpm":
-
     if args.Y_MODE == "none": # no conditioning, just train on the features
         X_values = X.astype(np.float32)
         y_values = np.zeros(len(X_values), dtype=np.int64)
@@ -191,8 +185,26 @@ if args.MODEL == "tabddpm":
         X_values = X[:, :NUM_FEATURES].astype(np.float32)
         y_values, y_lookup = pack_condition_rows(X[:, NUM_FEATURES:])
         np.save(Path(save_dir) / "y_lookup.npy", y_lookup)
-
     is_y_cond = args.Y_MODE == "cond"
+
+
+elif args.MODEL == "flow":
+    X_values = X
+    y_values = np.zeros((len(X_values), 1)) # conditioning features are stored within X for the flow
+
+
+n_classes = export_dataset(
+    save_dir ,
+    X_values,
+    y_values,
+    train_indices,
+    val_indices,
+)
+
+
+
+if args.MODEL == "tabddpm":
+
 
     # Configure the official TabDDPM model and data transformations
     model_params = {
@@ -220,8 +232,7 @@ if args.MODEL == "tabddpm":
     }
 
 elif args.MODEL == "flow":
-    X_values = X
-    y_values = np.zeros((len(X_values), 1)) # conditioning features are stored within X for the flow
+    
 
     hidden_features = [int(x) for x in args.HIDDEN_FEATURES.split(",")]
 
@@ -246,13 +257,6 @@ elif args.MODEL == "flow":
     num_params = count_parameters(flow)
     print(f"Number of trainable parameters: {num_params}")
 
-n_classes = export_dataset(
-    save_dir ,
-    X_values,
-    y_values,
-    train_indices,
-    val_indices,
-)
 
 # Save the resolved run configuration before training
 run_config["feature_labels"] = feature_labels
@@ -272,12 +276,12 @@ with open(
 
 if args.TRAIN:
 
-    print(f"Training {args.MODEL} model")
+    print(f"\nTraining {args.MODEL} model...")
     # Train TabDDPM with the official implementation
     if args.MODEL == "tabddpm":
         tabddpm_train(
             parent_dir=str(save_dir),
-            real_data_path=str(dataset_dir),
+            real_data_path=str(save_dir),
             steps=args.STEPS,
             lr=args.LEARNING_RATE,
             weight_decay=args.WEIGHT_DECAY,
@@ -288,7 +292,7 @@ if args.TRAIN:
             gaussian_loss_type="mse",
             scheduler=args.SCHEDULER,
             T_dict=T_dict,
-            num_numerical_features=X_num.shape[1],
+            num_numerical_features=X_values.shape[1],
             device=device,
             seed=args.SEED,
             change_val=False,
@@ -354,52 +358,55 @@ if args.TRAIN:
                 torch.save(flow.state_dict(), f"{save_dir}/test.pt")
 
             if (k + 1) % args.PLOT_EPOCH_INTERVAL == 0:
-                print(f"Making eval plots at epoch {k}...")
+                print(f"     Making eval plots at epoch {k}")
+
                 flow.eval()
-            
-                x_plot = next(iter(val_loader)).to(device).float()
-            
-                if args.NUM_COND_INPUTS > 0:
-                    x_plot_data = x_plot[:, :-args.NUM_COND_INPUTS]
-                    x_plot_context = x_plot[:, -args.NUM_COND_INPUTS:]
-                    samples = sample_from_flow(flow, N=args.OVERSAMPLE, x_context=x_plot_context if args.NUM_COND_INPUTS > 0 else None)
-                else:
-                    samples = sample_from_flow(flow, N=args.OVERSAMPLE * len(x_plot))
-            
-                loc_data_dict = {
-                    "data": inverse_preprocess_data(
-                        x_plot.detach().cpu().numpy(),
-                        save_dir,
-                        args.ZUKO_ID,
-                        args.NUM_COND_INPUTS,
-                    ),
+                with torch.no_grad():
+                
+                    x_plot = next(iter(val_loader)).to(device).float()
+                
+                    if args.NUM_COND_INPUTS > 0:
+                        x_plot_data = x_plot[:, :-args.NUM_COND_INPUTS]
+                        x_plot_context = x_plot[:, -args.NUM_COND_INPUTS:]
+                        samples = sample_from_flow(flow, N=args.OVERSAMPLE, x_context=x_plot_context if args.NUM_COND_INPUTS > 0 else None)
+                    else:
+                        samples = sample_from_flow(flow, N=args.OVERSAMPLE * len(x_plot))
+                
+                    loc_data_dict = {
+                        "data": inverse_preprocess_data(
+                            x_plot.detach().cpu().numpy(),
+                            save_dir,
+                            args.ZUKO_ID,
+                            args.NUM_COND_INPUTS,
+                        ),
 
-                "generated": inverse_preprocess_data(
-                        samples,
-                        save_dir,
-                        args.ZUKO_ID,
-                        args.NUM_COND_INPUTS,
-                    ),
-                }
-                plot_hists_1d(loc_data_dict, bins_dict, log_dims=log_vars, labels=feature_labels)
-                plt.savefig(f"{save_dir}/hists_epoch_{k}")
-                plt.close()
+                    "generated": inverse_preprocess_data(
+                            samples,
+                            save_dir,
+                            args.ZUKO_ID,
+                            args.NUM_COND_INPUTS,
+                        ),
+                    }
+                    plot_hists_1d(loc_data_dict, bins_dict, log_dims=log_vars, labels=feature_labels)
+                    plt.savefig(f"{save_dir}/hists_epoch_{k}")
+                    plt.close()
 
-                # for key in loc_data_dict.keys():
-                #     fig_samp, axes_samp = plot_corner_hist_2d(
-                #         loc_data_dict[key],
-                #         feature_labels=feature_labels,
-                #         bins_dict=bins_dict,
-                #         log_dims=log_vars,
-                #         title= key,
-                #     )
-                #     plt.savefig(f"{save_dir}/corner_{key}")
-                #     plt.close()
+                    # for key in loc_data_dict.keys():
+                    #     fig_samp, axes_samp = plot_corner_hist_2d(
+                    #         loc_data_dict[key],
+                    #         feature_labels=feature_labels,
+                    #         bins_dict=bins_dict,
+                    #         log_dims=log_vars,
+                    #         title= key,
+                    #     )
+                    #     plt.savefig(f"{save_dir}/corner_{key}")
+                    #     plt.close()
 
 
 if args.EVAL:
 
-    print(f"Evaluating {args.MODEL} model")
+    print(f"\nEvaluating {args.MODEL} model...")
+    print("     Making samples...")
 
     if args.MODEL == "tabddpm":
         # shiyu can you add plotting to your section
@@ -407,9 +414,9 @@ if args.EVAL:
 
         tabddpm_sample(
             parent_dir=str(save_dir),
-            real_data_path=str(dataset_dir),
+            real_data_path=str(save_dir),
             batch_size=args.SAMPLE_BATCH_SIZE,
-            num_samples=len(X_num),
+            num_samples=len(X_values),
             model_type="mlp",
             model_params=model_params,
             model_path=str(Path(save_dir) / "model.pt"),
@@ -417,7 +424,7 @@ if args.EVAL:
             gaussian_loss_type="mse",
             scheduler=args.SCHEDULER,
             T_dict=T_dict,
-            num_numerical_features=X_num.shape[1],
+            num_numerical_features=X_values.shape[1],
             disbalance=None,
             device=device,
             seed=args.SEED,
@@ -437,66 +444,58 @@ if args.EVAL:
         # shiyu whos local transformation did you use
         # shiyu why only save global samples?
 
-        samples_global = inverse_geometry_transform(samples, args.BASIS, collection_list[0], FEATURE_ORDER)
-        np.save(Path(save_dir) / "tabddpm_samples.npy", samples_global)
+        
 
         
 
     elif args.MODEL == "flow":
 
-        flow.load_state_dict(torch.load(f"{save_dir}/test.pt"))
+        flow.load_state_dict(torch.load(f"{save_dir}/test.pt", map_location=device))
+        flow.eval()
 
         num_samples_total = len(X)
-        sample_batch_size = 8192
+        sample_batch_size = 8192 * 2
 
         samples = []
-        for i in tqdm(range(0, num_samples_total, sample_batch_size)):
-            if i + sample_batch_size > num_samples_total:
-                nn = num_samples_total - i
-            else:
-                nn = sample_batch_size
+        with torch.no_grad():
+            for i in tqdm(range(0, num_samples_total, sample_batch_size)):
+                nn = min(sample_batch_size, num_samples_total - i)
 
+                if args.NUM_COND_INPUTS > 0:
+                    context_to_sample = torch.tensor(
+                        X[i:i+nn, -args.NUM_COND_INPUTS:], dtype=torch.float32
+                    ).to(device)
+                else:
+                    context_to_sample = None
 
-            if args.NUM_COND_INPUTS > 0:
-                context_to_sample = torch.tensor(
-                    X[i:i+nn, -args.NUM_COND_INPUTS:], dtype=torch.float32
-                ).to(device)
-
-
-            loc_samples = sample_from_flow(flow, N=args.OVERSAMPLE, x_context=context_to_sample if args.NUM_COND_INPUTS > 0 else None)
-            samples.append(loc_samples)
+                loc_samples = sample_from_flow(flow, N=args.OVERSAMPLE, x_context=context_to_sample)
+                samples.append(loc_samples)
         samples = np.concatenate(samples)
 
 
 
-        samples = inverse_preprocess_data( samples , save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS)
-        samples_global = inverse_geometry_transform(samples, args.BASIS, collection_list[0], FEATURE_ORDER)
-        np.save(f"{save_dir}/flow_samples.npy", samples_global)
-                
-        plot_hists_1d({"data":X, f"generated_{args.BASIS}":samples, f"generated_global":samples_global}, bins_dict, log_dims=log_vars, labels=feature_labels)
-        plt.savefig(f"{save_dir}/hists_final")
-        plt.close()
-        
-    
-        fig_samp, axes_samp = plot_corner_hist_2d(samples, feature_labels=feature_labels, bins_dict=bins_dict, log_dims=log_vars, title= f"generated_{args.BASIS}",)
-        plt.savefig(f"{save_dir}/corner_generated_{args.BASIS}_final")
-        plt.close()
 
-        fig_samp, axes_samp = plot_corner_hist_2d(samples_global, feature_labels=global_feature_labels, bins_dict=bins_dict, log_dims=log_vars, title= f"generated_global",)
-        plt.savefig(f"{save_dir}/corner_generated_global_final")
-        plt.close()
-                
+    samples_global = inverse_geometry_transform(samples, args.BASIS, collection_list[0], FEATURE_ORDER)
+    np.save(Path(save_dir) / "generated_samples.npy", samples_global)
         
+    # shiyu What is all fo the global?
 
+    fig_samp, axes_samp = plot_corner_hist_2d(samples, feature_labels=feature_labels, bins_dict=bins_dict, log_dims=log_vars, title= f"generated_{args.BASIS}",)
+    plt.savefig(f"{save_dir}/corner_generated_{args.BASIS}_final")
+    plt.close()
 
-
-        
-        
-    # What is all fo the global?
+    fig_samp, axes_samp = plot_corner_hist_2d(samples_global, feature_labels=global_feature_labels, bins_dict=bins_dict, log_dims=log_vars, title= f"generated_global",)
+    plt.savefig(f"{save_dir}/corner_generated_global_final")
+    plt.close()
+            
+    print("     Comparing samples to target...")
     results_dir = evaluate_samples(samples, samples_global, args.BASIS, X, X_global, feature_labels, global_feature_labels, save_dir, NUM_BINS, args.NUM_BDTS, args.BDT_SUBSAMPLE_FRAC, device, log_vars)
     wandb.log(results_dir)
+    print(results_dir)
+
+
 
       
 
-
+print("Done!")
 wandb.finish()

@@ -624,7 +624,7 @@ def clean_data(x):
 
 #     return X
 
-def pack_condition_rows(condition, model):
+def pack_condition_rows(condition):
         """Map each unique condition row to a TabDDPM class index."""
         condition = np.asarray(condition)
 
