@@ -20,7 +20,7 @@ from helpers.data_transforms import (
     export_dataset
 )
 from helpers.evaluation import evaluate_samples
-from helpers.flow import sample_from_flow
+from helpers.flow import run_training_step, sample_from_flow
 #plt.style.use("../science.mplstyle")
 
 # %%
@@ -45,23 +45,23 @@ for path in (str(TABDDPM_ROOT), str(TABDDPM_SCRIPTS)):
 BIN_BOUND = 5
 NUM_BINS = 100
 
-feature_indices_dict = {
-    "InnerTrackerBarrelCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
-    "InnerTrackerEndcapCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
-    "OuterTrackerBarrelCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
-    "OuterTrackerEndcapCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
-    "VertexBarrelCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
-    "VertexEndcapCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
-}
+# feature_indices_dict = {
+#     "InnerTrackerBarrelCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
+#     "InnerTrackerEndcapCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
+#     "OuterTrackerBarrelCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
+#     "OuterTrackerEndcapCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
+#     "VertexBarrelCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
+#     "VertexEndcapCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
+# }
 
 # setup
 parser = argparse.ArgumentParser()
 parser.add_argument("--MODEL", choices=["flow", "tabddpm"],default="flow", help="Generative_model")
 parser.add_argument("--ZUKO_ID", type=str, default="NSF", help="Zuko model ID")
 parser.add_argument("--NAME", type=str, default="", help="Name")
-parser.add_argument("--WORKING_DIR", default="/scratch/midway3/rmastand/muon_collider", type=str, help="Where to store model outputs and plots")
+parser.add_argument("--SAVE_DIR", default="/scratch/midway3/rmastand/muon_collider", type=str, help="Where to store model outputs and plots")
 parser.add_argument("--WANDB_DIR", default="/scratch/midway3/rmastand/wandb", type=str, help="Where to store model outputs and plots")
-parser.add_argument("--DATA_DIR", default="/scratch/midway3/rmastand/nuGun_pT_0_50", type=str, help="Where to store model outputs and plots")
+parser.add_argument("--DATA_DIR", default="/scratch/midway3/rmastand/muon_collider/nuGun_pT_0_50/reco_h5", type=str, help="Where to store model outputs and plots")
 parser.add_argument("--OVERSAMPLE", default=1, type=int)
 
 # data + evaluation
@@ -73,11 +73,12 @@ parser.add_argument("--EVAL", action="store_true", help="Whether to evaluate the
 parser.add_argument("--NUM_BDTS", type=int, default=5, help="For sample evaluation")
 parser.add_argument("--BDT_SUBSAMPLE_FRAC", type=float, default=0.25, help="Evaluation subsample fraction")
 parser.add_argument("--SEED", type=int, default=8, help="Random seed")  # shiyu: do you have a random seed?
+parser.add_argument("--TRAINING_FRAC", type=float, default=1.0, help="How much training data to use")
+
 
 # flow-specific arguments
 parser.add_argument("--NUM_EPOCHS", type=int, default=5, help="Number of training epochs")
 parser.add_argument("--LEARNING_RATE", type=float, default=1e-3, help="Learning rate")
-parser.add_argument("--TRAINING_FRAC", type=float, default=1, help="How much training data to use")
 parser.add_argument("--BATCH_SIZE", type=int, default=512, help="Batch size")
 parser.add_argument("--NUM_COND_INPUTS", type=int, default=0, help="Number of conditional inputs")
 parser.add_argument("--TRANSFORMS", type=int, default=3, help="Number of transforms ")
@@ -86,7 +87,7 @@ parser.add_argument("--FREQS", type=int, default=3, help="Freqs for CNF")
 parser.add_argument("--BINS", type=int, default=16, help="Freqs for CNF")
 parser.add_argument("--DEGREE", type=int, default=3, help="Freqs for CNF")
 parser.add_argument("--POLYNOMIALS", type=int, default=4, help="Freqs for CNF")
-parser.add_argument("--PLOT_EPOCH_INTERVAL", type=int, default=100, help="Interval for plotting during training")
+parser.add_argument("--PLOT_EPOCH_INTERVAL", type=int, default=1, help="Interval for plotting during training")
 
 
 # TabDDPM-specific arguments
@@ -103,19 +104,12 @@ parser.add_argument("--Y_MODE", choices=["cond", "joint", "none"], default="cond
 args = parser.parse_args()
 
 
-
-
-
-
-
-
-
 # %%
 if args.MODEL == "flow":
-    save_dir = f"{args.WORKING_DIR}/zuko_outputs/{args.NAME}"
+    save_dir = f"{args.SAVE_DIR}/zuko_outputs/{args.NAME}"
     import zuko
 elif args.MODEL == "tabddpm":
-    save_dir = f"{args.WORKING_DIR}/ddpm_outputs/{args.NAME}"
+    save_dir = f"{args.SAVE_DIR}/ddpm_outputs/{args.NAME}"
     from sample import sample as tabddpm_sample
     from train import train as tabddpm_train
 
@@ -189,28 +183,12 @@ plt.close()
 
 if args.MODEL == "tabddpm":
 
-    # shiyu I don't understand this function
-    def pack_condition_rows(condition, model):
-        """Map each unique condition row to a TabDDPM class index."""
-        condition = np.asarray(condition)
-
-        if condition.ndim == 1:
-            condition = condition[:, None]
-
-        unique_rows, condition_ids = np.unique(
-            condition,
-            axis=0,
-            return_inverse=True,
-        )
-
-        return condition_ids.astype(np.int64), unique_rows.astype(np.float32)
-
-    if args.Y_MODE == "none":
-        X_num = X.astype(np.float32)
-        y_values = np.zeros(len(X_num), dtype=np.int64)
+    if args.Y_MODE == "none": # no conditioning, just train on the features
+        X_values = X.astype(np.float32)
+        y_values = np.zeros(len(X_values), dtype=np.int64)
         y_lookup = None
-    else:
-        X_num = X[:, :NUM_FEATURES].astype(np.float32)
+    else: # conditioning on the features, so pack the conditioning features into a single integer label
+        X_values = X[:, :NUM_FEATURES].astype(np.float32)
         y_values, y_lookup = pack_condition_rows(X[:, NUM_FEATURES:])
         np.save(Path(save_dir) / "y_lookup.npy", y_lookup)
 
@@ -239,17 +217,38 @@ if args.MODEL == "tabddpm":
         "cat_min_frequency": None,
         "cat_encoding": None,
         "y_policy": "default",
-
-
     }
 
 elif args.MODEL == "flow":
-    X_num = X[:, :NUM_FEATURES].astype(np.float32)
-    y_values = X[:, NUM_FEATURES:]
+    X_values = X
+    y_values = np.zeros((len(X_values), 1)) # conditioning features are stored within X for the flow
+
+    hidden_features = [int(x) for x in args.HIDDEN_FEATURES.split(",")]
+
+    # choose flow model
+    if args.ZUKO_ID == "NSF":
+        flow = zuko.flows.NSF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
+    elif args.ZUKO_ID == "MAF":
+        flow = zuko.flows.MAF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
+    elif args.ZUKO_ID == "NCSF":
+        flow = zuko.flows.NCSF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, bins=args.BINS).to(device)
+    elif args.ZUKO_ID == "SOSPF":
+        flow = zuko.flows.SOSPF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, degree=args.DEGREE, polynomials=args.POLYNOMIALS).to(device)
+    elif args.ZUKO_ID == "UNAF":
+        flow = zuko.flows.UNAF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
+    elif args.ZUKO_ID == "CNF":
+        flow = zuko.flows.CNF(NUM_FEATURES, args.NUM_COND_INPUTS, hidden_features=hidden_features, freqs=args.FREQS).to(device)
+    else:
+        print("ERROR: Unknown ZUKO_ID")
+        exit()
+
+
+    num_params = count_parameters(flow)
+    print(f"Number of trainable parameters: {num_params}")
 
 n_classes = export_dataset(
-    dataset_dir,
-    X_num,
+    save_dir ,
+    X_values,
     y_values,
     train_indices,
     val_indices,
@@ -272,6 +271,8 @@ with open(
 
 
 if args.TRAIN:
+
+    print(f"Training {args.MODEL} model")
     # Train TabDDPM with the official implementation
     if args.MODEL == "tabddpm":
         tabddpm_train(
@@ -316,39 +317,7 @@ if args.TRAIN:
         train_loader = torch.utils.data.DataLoader(X_train, batch_size=args.BATCH_SIZE, shuffle=True, num_workers = 0, pin_memory = True)
         val_loader = torch.utils.data.DataLoader(X_val, batch_size=args.BATCH_SIZE, shuffle=False, num_workers = 0, pin_memory = True)
 
-        hidden_features = [int(x) for x in args.HIDDEN_FEATURES.split(",")]
-
-        # choose flow model
-
-        if args.ZUKO_ID == "NSF":
-            flow = zuko.flows.NSF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
-        #elif args.ZUKO_ID == "GMM":
-        #    flow = zuko.flows.GMM(NUM_FEATURES, args.NUM_COND_INPUTS, components=30, hidden_features=[256] * 5).to(device)
-        #elif args.ZUKO_ID == "NICE":
-        #    flow = zuko.flows.NICE(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
-        elif args.ZUKO_ID == "MAF":
-            flow = zuko.flows.MAF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
-        elif args.ZUKO_ID == "NCSF":
-            flow = zuko.flows.NCSF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, bins=args.BINS).to(device)
-        elif args.ZUKO_ID == "SOSPF":
-            flow = zuko.flows.SOSPF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, degree=args.DEGREE, polynomials=args.POLYNOMIALS).to(device)
-        #elif args.ZUKO_ID == "NAF":
-        #    flow = zuko.flows.NAF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
-        elif args.ZUKO_ID == "UNAF":
-            flow = zuko.flows.UNAF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
-        elif args.ZUKO_ID == "CNF":
-            flow = zuko.flows.CNF(NUM_FEATURES, args.NUM_COND_INPUTS, hidden_features=hidden_features, freqs=args.FREQS).to(device)
-        #elif args.ZUKO_ID == "GF":
-        #    flow = zuko.flows.GF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, components=8).to(device)
-        #elif args.ZUKO_ID == "BPF":
-        #    flow = zuko.flows.BPF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, degree=16).to(device)
-        else:
-            print("ERROR: Unknown ZUKO_ID")
-            exit()
-
-
-        num_params = count_parameters(flow)
-        print(f"Number of trainable parameters: {num_params}")
+        
         wandb.log({"num_trainable_params": num_params})
         wandb.run.summary["num_trainable_params"] = num_params
 
@@ -361,18 +330,13 @@ if args.TRAIN:
         best_val_loss = 1e10
         start_epoch = 0
       
-        global_step = 0
 
         for k in range(start_epoch, args.NUM_EPOCHS):
 
-            epoch_losses_train_ll, epoch_losses_val_ll = [], []
-            epoch_losses_train_mask, epoch_losses_val_mask = [], []
-            epoch_losses_train_total, epoch_losses_val_total = [], []
-
-            train_losses, global_step = run_training_step(train_loader, k, global_step, is_val_step=False)
+            train_losses = run_training_step(flow, optimizer, train_loader, device, k, args.NUM_COND_INPUTS, is_val_step=False)
 
             with torch.no_grad():
-                val_losses, _ = run_training_step(val_loader, k, global_step, is_val_step=True)
+                val_losses = run_training_step(flow, optimizer, val_loader, device, k, args.NUM_COND_INPUTS, is_val_step=True)
 
             wandb.log(
                 {   
@@ -390,6 +354,7 @@ if args.TRAIN:
                 torch.save(flow.state_dict(), f"{save_dir}/test.pt")
 
             if (k + 1) % args.PLOT_EPOCH_INTERVAL == 0:
+                print(f"Making eval plots at epoch {k}...")
                 flow.eval()
             
                 x_plot = next(iter(val_loader)).to(device).float()
@@ -397,12 +362,9 @@ if args.TRAIN:
                 if args.NUM_COND_INPUTS > 0:
                     x_plot_data = x_plot[:, :-args.NUM_COND_INPUTS]
                     x_plot_context = x_plot[:, -args.NUM_COND_INPUTS:]
-                    factor = 1
-                    context_to_sample = x_plot_context.repeat_interleave(factor, dim=0)
-                    samples = sample_from_flow(flow, N=factor * len(x_plot_data), x_context=context_to_sample)
+                    samples = sample_from_flow(flow, N=args.OVERSAMPLE, x_context=x_plot_context if args.NUM_COND_INPUTS > 0 else None)
                 else:
-                    factor = 1
-                    samples = sample_from_flow(flow, N=factor * len(x_plot))
+                    samples = sample_from_flow(flow, N=args.OVERSAMPLE * len(x_plot))
             
                 loc_data_dict = {
                     "data": inverse_preprocess_data(
@@ -411,6 +373,7 @@ if args.TRAIN:
                         args.ZUKO_ID,
                         args.NUM_COND_INPUTS,
                     ),
+
                 "generated": inverse_preprocess_data(
                         samples,
                         save_dir,
@@ -419,7 +382,7 @@ if args.TRAIN:
                     ),
                 }
                 plot_hists_1d(loc_data_dict, bins_dict, log_dims=log_vars, labels=feature_labels)
-                plt.savefig(f"{save_dir}/hists")
+                plt.savefig(f"{save_dir}/hists_epoch_{k}")
                 plt.close()
 
                 # for key in loc_data_dict.keys():
@@ -436,7 +399,11 @@ if args.TRAIN:
 
 if args.EVAL:
 
+    print(f"Evaluating {args.MODEL} model")
+
     if args.MODEL == "tabddpm":
+        # shiyu can you add plotting to your section
+        # shiyu are you using the same context that I am when to generate the final samples? We should probably both be using the same context. Maybe we can just use the full train sample
 
         tabddpm_sample(
             parent_dir=str(save_dir),
@@ -466,19 +433,20 @@ if args.EVAL:
             condition_generated = y_lookup[y_generated]
             samples = np.concatenate([X_generated, condition_generated], axis=1)
 
+        # shiyu I'm a little confused by how this works, particularly if the basis is in local
+        # shiyu whos local transformation did you use
+        # shiyu why only save global samples?
+
         samples_global = inverse_geometry_transform(samples, args.BASIS, collection_list[0], FEATURE_ORDER)
         np.save(Path(save_dir) / "tabddpm_samples.npy", samples_global)
 
-        evaluate_samples(samples, samples_global)
+        
 
     elif args.MODEL == "flow":
 
+        flow.load_state_dict(torch.load(f"{save_dir}/test.pt"))
 
-        eval_flow = flow
-
-        eval_flow.load_state_dict(torch.load(f"{save_dir}/test.pt"))
-
-        num_samples_total = X_train.shape[0] 
+        num_samples_total = len(X)
         sample_batch_size = 8192
 
         samples = []
@@ -491,84 +459,44 @@ if args.EVAL:
 
             if args.NUM_COND_INPUTS > 0:
                 context_to_sample = torch.tensor(
-                    X_train[i:i+nn, -args.NUM_COND_INPUTS:], dtype=torch.float32
+                    X[i:i+nn, -args.NUM_COND_INPUTS:], dtype=torch.float32
                 ).to(device)
 
 
-            loc_samples = sample_from_flow(eval_flow, N=args.OVERSAMPLE, x_context=context_to_sample if args.NUM_COND_INPUTS > 0 else None)
-            
-            
+            loc_samples = sample_from_flow(flow, N=args.OVERSAMPLE, x_context=context_to_sample if args.NUM_COND_INPUTS > 0 else None)
             samples.append(loc_samples)
         samples = np.concatenate(samples)
-    
 
-        
+
+
         samples = inverse_preprocess_data( samples , save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS)
         samples_global = inverse_geometry_transform(samples, args.BASIS, collection_list[0], FEATURE_ORDER)
         np.save(f"{save_dir}/flow_samples.npy", samples_global)
+                
+        plot_hists_1d({"data":X, f"generated_{args.BASIS}":samples, f"generated_global":samples_global}, bins_dict, log_dims=log_vars, labels=feature_labels)
+        plt.savefig(f"{save_dir}/hists_final")
+        plt.close()
+        
+    
+        fig_samp, axes_samp = plot_corner_hist_2d(samples, feature_labels=feature_labels, bins_dict=bins_dict, log_dims=log_vars, title= f"generated_{args.BASIS}",)
+        plt.savefig(f"{save_dir}/corner_generated_{args.BASIS}_final")
+        plt.close()
 
-        evaluate_samples(samples, samples_global)
+        fig_samp, axes_samp = plot_corner_hist_2d(samples_global, feature_labels=global_feature_labels, bins_dict=bins_dict, log_dims=log_vars, title= f"generated_global",)
+        plt.savefig(f"{save_dir}/corner_generated_global_final")
+        plt.close()
+                
+        
 
 
-        # # %%
-    #
-    # plot_hists_1d({"data":X, "generated":samples}, bins_dict, log_dims=log_vars, labels=feature_labels)
-    # plt.savefig(f"{save_dir}/hists_final")
-    # plt.close()
-    #
-    #
-    # # %%
-    # fig_samp, axes_samp = plot_corner_hist_2d(
-    #     samples,
-    #     feature_labels=feature_labels,
-    #     bins_dict=bins_dict,
-    #     log_dims=log_vars,
-    #     title= "generated",
-    # )
-    # plt.savefig(f"{save_dir}/corner_generated_final")
-    # plt.close()
-    #
-    #
-    #
-    # # %% [markdown]
-    # # # Train a BDT to discriminate flow from samples
-    #
-    # # %%
-    #
-    # with open(f"{save_dir}/results.txt", "w") as ofile:
-    #     ks_dists_samples = get_kl_dist(X, samples)
-    #     ks_dists_gaussians = get_kl_dist(np.random.normal(size = X.shape), np.random.normal(size =  samples.shape))
-    #
-    #
-    #     for i, ks_dist in enumerate(ks_dists_samples):
-    #         ofile.write("Feature {i} KL div: {ks_dist} (for gaussian: {ks_gauss})".format(i=i, ks_dist=ks_dist, ks_gauss=ks_dists_gaussians[i]))
-    #         ofile.write("\n")
-    #
-    #     auc_mean, auc_std, best_epoch_list, max_epochs, _, _, _ = discriminate_data_from_samples(
-    #         X,
-    #         samples,
-    #         args.NUM_BDTS,
-    #         "configs/bdt.yml",
-    #         model_type="bdt",
-    #         plot_losses=True,
-    #         device=device,
-    #         val_size=0.2,
-    #         subsample_frac=0.25,  # optional subsample for large datasets,
-    #         plot_dir=save_dir
-    #     )
-    #
-    #     ofile.write(f"auc {auc_mean} pm {auc_std}. best epoch {best_epoch_list} of {max_epochs}.\n")
-    #
-    # wandb.log({
-    #     "auc_mean": auc_mean,
-    #     "auc_std": auc_std,
-    #     "bdt_best_epoch": np.mean(best_epoch_list)
-    #         })
-    #
-    # wandb.run.summary["auc_mean"] = auc_mean
-    # wandb.run.summary["auc_std"] = auc_std
 
-   
+        
+        
+    # What is all fo the global?
+    results_dir = evaluate_samples(samples, samples_global, args.BASIS, X, X_global, feature_labels, global_feature_labels, save_dir, NUM_BINS, args.NUM_BDTS, args.BDT_SUBSAMPLE_FRAC, device, log_vars)
+    wandb.log(results_dir)
+
+      
 
 
 wandb.finish()

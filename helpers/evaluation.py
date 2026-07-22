@@ -775,21 +775,22 @@ def run_eval_suite(reference, generated_samples, save_dir, evaluation_name, num_
     return auc_mean, auc_std, best_epoch_list
 
 
-def evaluate_samples(samples, samples_global):
-    evaluations = [(args.BASIS, X, samples, feature_labels)]
+def evaluate_samples(samples, samples_global, basis, X, X_global, feature_labels, global_feature_labels, save_dir, NUM_BINS, NUM_BDTS, BDT_SUBSAMPLE_FRAC, device, log_vars):
+    evaluations = [(basis, X, samples, feature_labels)]
 
-    if args.BASIS in ["local_phi", "local_rphi"]:
+    if basis in ["local_phi", "local_rphi"]:
         evaluations.append(("global", X_global, samples_global, global_feature_labels))
 
+    results_dir = {}
+
     for evaluation_name, reference, generated, labels in evaluations:
-        auc_mean, auc_std, best_epoch_list = run_eval_suite(reference, generated, save_dir, evaluation_name, NUM_BINS, args.NUM_BDTS, device, args.BDT_SUBSAMPLE_FRAC, labels, log_vars)
+        auc_mean, auc_std, best_epoch_list = run_eval_suite(reference, generated, save_dir, evaluation_name, NUM_BINS, NUM_BDTS, device, BDT_SUBSAMPLE_FRAC, labels, log_vars)
         prefix = "global_" if evaluation_name == "global" else ""
 
-        wandb.log({
+        results_dir[evaluation_name] = {
             f"{prefix}auc_mean": auc_mean,
             f"{prefix}auc_std": auc_std,
             f"{prefix}bdt_best_epoch": np.mean(best_epoch_list),
-        })
+        }
 
-        wandb.run.summary[f"{prefix}auc_mean"] = auc_mean
-        wandb.run.summary[f"{prefix}auc_std"] = auc_std
+    return results_dir

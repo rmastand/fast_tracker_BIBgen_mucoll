@@ -1,6 +1,8 @@
 import numpy as np
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import pickle
+from pathlib import Path
+import json
 
 epsilon = 1e-12
 
@@ -346,11 +348,11 @@ def load_in_data(
 
              
         if num_cond_features == 0:
-            tmp_data = np.load(f"{data_dir}/{collection}_SimTrackerHit_conditional_reco_{r}.npy")
+            tmp_data = np.load(f"{data_dir}/{collection}_SimTrackerHit_conditional_reco_0.npy")
             
             X.append(tmp_data[:int(len(tmp_data)*training_frac)])
         elif num_cond_features > 0:
-            tmp_data = np.load(f"{data_dir}/{collection}_SimTrackerHit_conditional_reco_{r}.npy")
+            tmp_data = np.load(f"{data_dir}/{collection}_SimTrackerHit_conditional_reco_0.npy")
 
             X.append(tmp_data[:int(len(tmp_data)*training_frac)])
 
@@ -622,6 +624,20 @@ def clean_data(x):
 
 #     return X
 
+def pack_condition_rows(condition, model):
+        """Map each unique condition row to a TabDDPM class index."""
+        condition = np.asarray(condition)
+
+        if condition.ndim == 1:
+            condition = condition[:, None]
+
+        unique_rows, condition_ids = np.unique(
+            condition,
+            axis=0,
+            return_inverse=True,
+        )
+
+        return condition_ids.astype(np.int64), unique_rows.astype(np.float32)
 
 def export_dataset(dataset_dir, X_num, y, train_indices, val_indices):
     """Write the NumPy splits and metadata required by the official TabDDPM loader."""
