@@ -444,8 +444,7 @@ if args.EVAL:
         # shiyu whos local transformation did you use
         # shiyu why only save global samples?
 
-        
-
+   
         
 
     elif args.MODEL == "flow":
@@ -471,6 +470,7 @@ if args.EVAL:
                 loc_samples = sample_from_flow(flow, N=args.OVERSAMPLE, x_context=context_to_sample)
                 samples.append(loc_samples)
         samples = np.concatenate(samples)
+        samples = inverse_preprocess_data(samples, save_dir,  args.ZUKO_ID,  args.NUM_COND_INPUTS)
 
 
 

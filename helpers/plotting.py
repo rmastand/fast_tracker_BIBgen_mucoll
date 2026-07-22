@@ -35,7 +35,25 @@ def plot_corner_hist_2d(
     X : (N, D) array
     """
     D = X.shape[1]
-    norm = LogNorm()
+
+    # Pre-compute vmin/vmax so LogNorm is valid even when many bins are empty
+    all_pos_vals = []
+    for i in range(D):
+        for j in range(D):
+            if j > i:
+                h, _, _ = np.histogram2d(
+                    X[:, i], X[:, j],
+                    bins=[bins_dict[i], bins_dict[j]],
+                    density=True,
+                )
+                pos = h[h > 0]
+                if len(pos):
+                    all_pos_vals.extend(pos.tolist())
+
+    if all_pos_vals:
+        norm = LogNorm(vmin=min(all_pos_vals), vmax=max(all_pos_vals))
+    else:
+        norm = None  # fall back to linear if no positive-density bins
 
     fig, axes = plt.subplots(
         D, D,
@@ -103,7 +121,7 @@ def plot_corner_hist_2d(
     if title is not None:
         fig.suptitle(title, fontsize=16)
 
-    if mappable is not None:
+    if mappable is not None and norm is not None:
         fig.colorbar(
             mappable,
             ax=axes,
