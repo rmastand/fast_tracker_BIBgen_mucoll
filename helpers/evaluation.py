@@ -735,7 +735,7 @@ def run_eval_suite(reference, generated_samples, save_dir, evaluation_name, num_
             bins_dict[i] = np.linspace(np.min(reference[:,i] - 1), np.max(reference[:,i] + 1), num_bins)
 
     plot_hists_1d({"data":reference, "generated":generated_samples}, bins_dict, log_dims=log_vars, labels=feature_labels)
-    plt.savefig(f"{save_dir}/hists_{evaluation_name}.png")
+    plt.savefig(f"{save_dir}/plots/hists_{evaluation_name}.png")
     plt.close()
 
     fig_samp, axes_samp = plot_corner_hist_2d(
@@ -745,7 +745,7 @@ def run_eval_suite(reference, generated_samples, save_dir, evaluation_name, num_
         log_dims=log_vars,
         title="generated",
     )
-    plt.savefig(f"{save_dir}/corner_generated_{evaluation_name}.png")
+    plt.savefig(f"{save_dir}/plots/corner_generated_{evaluation_name}.png")
     plt.close()
 
     ks_dists_samples = get_kl_dist(reference, generated_samples)
@@ -761,7 +761,7 @@ def run_eval_suite(reference, generated_samples, save_dir, evaluation_name, num_
         device=device,
         val_size=0.2,
         subsample_frac=subsample_frac,
-        plot_dir=save_dir,
+        plot_dir=f"{save_dir}/plots",
         evaluation_name=evaluation_name,
     )
 

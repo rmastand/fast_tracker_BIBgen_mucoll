@@ -252,7 +252,7 @@ r_side_layer_map_barrel = {
 
 
 
-def apply_material_map_hybrid(samples_dir, material_map, col_name, master_feature_indices_dict):
+def apply_material_map_hybrid(samples_dir, material_map, col_name, feature_indices_dict):
 
     """
     material_map is in r-phi. We only use it for the endcaps (tbd)
@@ -260,13 +260,13 @@ def apply_material_map_hybrid(samples_dir, material_map, col_name, master_featur
 
     data = samples_dir[col_name]
 
-    phi = data[:, master_feature_indices_dict[col_name]["phi"]]
-    side = data[:, master_feature_indices_dict[col_name]["side"]].astype(int)
-    layer_id = data[:, master_feature_indices_dict[col_name]["layer"]].astype(int)
+    phi = data[:, feature_indices_dict["phi"]]
+    side = data[:, feature_indices_dict["side"]].astype(int)
+    layer_id = data[:, feature_indices_dict["layer"]].astype(int)
 
-    loc_x = data[:, master_feature_indices_dict[col_name]["r"]]*np.cos(phi)
-    loc_y = data[:, master_feature_indices_dict[col_name]["r"]]*np.sin(phi)
-    loc_z = data[:, master_feature_indices_dict[col_name]["z"]]
+    loc_x = data[:, feature_indices_dict["r"]]*np.cos(phi)
+    loc_y = data[:, feature_indices_dict["r"]]*np.sin(phi)
+    loc_z = data[:, feature_indices_dict["z"]]
 
 
     mask_geom = np.zeros(len(data), dtype=bool)

@@ -518,7 +518,7 @@ def preprocess_data(X, flow_training_dir, ZUKO_ID, num_cond_features=0, scaler_e
         if scaler_exists:
             with open(f"{flow_training_dir}/standard", "rb") as ifile:
                 standard_scaler = pickle.load(ifile)
-            X_preproc = standard_scaler.inverse_transform(X_to_preproc)
+            X_preproc = standard_scaler.transform(X_to_preproc)
             
         else:
             standard_scaler = StandardScaler()

@@ -1,0 +1,19 @@
+PATH_TO_DATA_DIR: /scratch/midway3/rmastand/muon_collider/nuGun_pT_0_50/reco_h5/
+PATH_TO_OUTPUT_DIR: /scratch/midway3/rmastand/muon_collider/
+PATH_TO_WANDB_DIR: /scratch/midway3/rmastand/wandb/
+
+ALL_COLLECTIONS: ["OuterTrackerBarrelCollection", "OuterTrackerEndcapCollection", "InnerTrackerBarrelCollection", "InnerTrackerEndcapCollection", "VertexBarrelCollection", "VertexEndcapCollection"]
+
+FEATURE_ORDER: [0,4,1,2,3,6,7,8,9]
+FEATURE_INDICES_DICT:
+  "r": 2
+  "phi": 3
+  "z": 4
+  "side": 5
+  "layer": 6
+  "module": 7
+  "sensor": 8
+   
+
+BIN_BOUND: 5
+NUM_BINS: 100

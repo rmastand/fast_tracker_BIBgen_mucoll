@@ -10,6 +10,7 @@ import os
 import torch
 import argparse
 import wandb
+import yaml
 from helpers.models.DNN import count_parameters
 from helpers.data_transforms import (
     preprocess_data,
@@ -37,32 +38,26 @@ for path in (str(TABDDPM_ROOT), str(TABDDPM_SCRIPTS)):
 # shiyu can you adjust the printouts for your model
 
 
-BIN_BOUND = 5
-NUM_BINS = 100
 
-# feature_indices_dict = {
-#     "InnerTrackerBarrelCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
-#     "InnerTrackerEndcapCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
-#     "OuterTrackerBarrelCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
-#     "OuterTrackerEndcapCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
-#     "VertexBarrelCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
-#     "VertexEndcapCollection": {"r": 2, "phi": 3, "z": 4, "side": 5, "layer": 6},
-# }
+with open("configs.yaml", "r") as f:
+    configs = yaml.safe_load(f)
+
+BIN_BOUND = configs["BIN_BOUND"]
+NUM_BINS = configs["NUM_BINS"]
+FEATURE_ORDER = configs["FEATURE_ORDER"]
+SAVE_DIR = configs["SAVE_DIR"]
+WANDB_DIR = configs["WANDB_DIR"]
 
 # setup
 parser = argparse.ArgumentParser()
 parser.add_argument("--MODEL", choices=["flow", "tabddpm"],default="flow", help="Generative_model")
-parser.add_argument("--ZUKO_ID", type=str, default="NSF", help="Zuko model ID")
+parser.add_argument("--ZUKO_ID", type=str, default="NCSF", help="Zuko model ID")
 parser.add_argument("--NAME", type=str, default="", help="Name")
-parser.add_argument("--SAVE_DIR", default="/scratch/midway3/rmastand/muon_collider", type=str, help="Where to store model outputs and plots")
-parser.add_argument("--WANDB_DIR", default="/scratch/midway3/rmastand/wandb", type=str, help="Where to store model outputs and plots")
-parser.add_argument("--DATA_DIR", default="/scratch/midway3/rmastand/muon_collider/nuGun_pT_0_50/reco_h5", type=str, help="Where to store model outputs and plots")
 parser.add_argument("--OVERSAMPLE", default=1, type=int)
 # shiyu are you using this argument 
 # data + evaluation
 parser.add_argument("--COLLECTION_LIST", type=str, default="OuterTrackerBarrelCollection")
 parser.add_argument("--BASIS", choices=["xy", "rphi", "local_phi", "local_rphi"], default="rphi", help="Coordinate basis used for training")
-parser.add_argument("--FEATURE_ORDER", default=None, help="Comma-separated list of feature indices to specify order. If None, uses default order.")
 parser.add_argument("--TRAIN", action="store_true", help="Whether to train the flow")
 parser.add_argument("--EVAL", action="store_true", help="Whether to evaluate the flow after training")
 parser.add_argument("--NUM_BDTS", type=int, default=5, help="For sample evaluation")
@@ -101,17 +96,19 @@ args = parser.parse_args()
 
 # %%
 if args.MODEL == "flow":
-    save_dir = f"{args.SAVE_DIR}/zuko_outputs/{args.NAME}"
+    save_dir = f"{SAVE_DIR}/zuko_outputs/{args.NAME}"
     import zuko
 elif args.MODEL == "tabddpm":
-    save_dir = f"{args.SAVE_DIR}/ddpm_outputs/{args.NAME}"
+    save_dir = f"{SAVE_DIR}/ddpm_outputs/{args.NAME}"
     # TabDDPM official training and sampling entry points
     from sample import sample as tabddpm_sample
     from train import train as tabddpm_train
 
 os.makedirs(save_dir, exist_ok=True)
-wandb_dir = f"{args.WANDB_DIR}"
+wandb_dir = f"{WANDB_DIR}"
 os.makedirs(wandb_dir, exist_ok=True)
+plots_dir = f"{save_dir}/plots"
+os.makedirs(plots_dir, exist_ok=True)
 
 # Keep W&B and saved configs limited to parameters used by the selected model
 flow_only_args = "ZUKO_ID OVERSAMPLE NUM_EPOCHS TRANSFORMS HIDDEN_FEATURES FREQS BINS DEGREE POLYNOMIALS PLOT_EPOCH_INTERVAL CHECKPOINT_EPOCH_INTERVAL TRAIN_FLOW EVAL_FLOW".split()
@@ -139,10 +136,9 @@ print(f"Running on collection {collection_list}")
 log_vars = []
 
 # %%
-FEATURE_ORDER = None if args.FEATURE_ORDER is None else [int(x) for x in args.FEATURE_ORDER.split(",")]
 
 # shiyu whose local phu transformation did you use?
-X, feature_labels = load_in_data(collection_list, args.BASIS, args.DATA_DIR, args.TRAINING_FRAC, args.NUM_COND_INPUTS, feature_order=FEATURE_ORDER)
+X, feature_labels = load_in_data(collection_list, args.BASIS, configs["PATH_TO_DATA_DIR"], args.TRAINING_FRAC, args.NUM_COND_INPUTS, feature_order=FEATURE_ORDER)
 
 # Keep a global reference for evaluating the final global samples
 # shiyu walk my though this and all of data_transforms
@@ -173,7 +169,7 @@ fig_samp, axes_samp = plot_corner_hist_2d(
         log_dims=log_vars,
         title= "data",
     )
-plt.savefig(f"{save_dir}/data_final")
+plt.savefig(f"{plots_dir}/data_final")
 plt.close()
 
 if args.MODEL == "tabddpm":
@@ -321,7 +317,11 @@ if args.TRAIN:
         train_loader = torch.utils.data.DataLoader(X_train, batch_size=args.BATCH_SIZE, shuffle=True, num_workers = 0, pin_memory = True)
         val_loader = torch.utils.data.DataLoader(X_val, batch_size=args.BATCH_SIZE, shuffle=False, num_workers = 0, pin_memory = True)
 
+        models_dir = f"{save_dir}/models"
+        os.makedirs(models_dir, exist_ok=True)
         
+        
+
         wandb.log({"num_trainable_params": num_params})
         wandb.run.summary["num_trainable_params"] = num_params
 
@@ -355,7 +355,16 @@ if args.TRAIN:
             
             if val_losses["val/total"] < best_val_loss:
                 best_val_loss = val_losses["val/total"]
-                torch.save(flow.state_dict(), f"{save_dir}/test.pt")
+                best_ckpt_path = f"{models_dir}/best_model.pt"
+                torch.save(
+                    {
+                        "epoch": k,
+                        "model_state_dict": flow.state_dict(),
+                        "optimizer_state_dict": optimizer.state_dict(),
+                        "val_loss": val_losses["val/total"],
+                    },
+                    best_ckpt_path,
+                )
 
             if (k + 1) % args.PLOT_EPOCH_INTERVAL == 0:
                 print(f"     Making eval plots at epoch {k}")
@@ -388,8 +397,18 @@ if args.TRAIN:
                         ),
                     }
                     plot_hists_1d(loc_data_dict, bins_dict, log_dims=log_vars, labels=feature_labels)
-                    plt.savefig(f"{save_dir}/hists_epoch_{k}")
+                    plt.savefig(f"{plots_dir}/hists_epoch_{k}")
                     plt.close()
+
+                torch.save(
+                    {
+                        "epoch": k,
+                        "model_state_dict": flow.state_dict(),
+                        "optimizer_state_dict": optimizer.state_dict(),
+                        "val_loss": val_losses["val/total"],
+                    },
+                    f"{models_dir}/checkpoint_epoch_{k}.pt",
+                )
 
                     # for key in loc_data_dict.keys():
                     #     fig_samp, axes_samp = plot_corner_hist_2d(
@@ -449,7 +468,8 @@ if args.EVAL:
 
     elif args.MODEL == "flow":
 
-        flow.load_state_dict(torch.load(f"{save_dir}/test.pt", map_location=device))
+        ckpt = torch.load(f"{save_dir}/models/best_model.pt", map_location=device, weights_only=False)
+        flow.load_state_dict(ckpt["model_state_dict"])
         flow.eval()
 
         num_samples_total = len(X)
@@ -481,11 +501,11 @@ if args.EVAL:
     # shiyu What is all fo the global?
 
     fig_samp, axes_samp = plot_corner_hist_2d(samples, feature_labels=feature_labels, bins_dict=bins_dict, log_dims=log_vars, title= f"generated_{args.BASIS}",)
-    plt.savefig(f"{save_dir}/corner_generated_{args.BASIS}_final")
+    plt.savefig(f"{plots_dir}/corner_generated_{args.BASIS}_final")
     plt.close()
 
     fig_samp, axes_samp = plot_corner_hist_2d(samples_global, feature_labels=global_feature_labels, bins_dict=bins_dict, log_dims=log_vars, title= f"generated_global",)
-    plt.savefig(f"{save_dir}/corner_generated_global_final")
+    plt.savefig(f"{plots_dir}/corner_generated_global_final")
     plt.close()
             
     print("     Comparing samples to target...")
