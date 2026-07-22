@@ -34,11 +34,19 @@ for path in (str(TABDDPM_ROOT), str(TABDDPM_SCRIPTS)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-import zuko
+
+if args.MODEL == "flow":
+    import zuko
+elif args.MODEL == "tabddpm":
+    from sample import sample as tabddpm_sample
+    from train import train as tabddpm_train
+
+
+# shiyu I had to override your last commit
+
 
 # TabDDPM official training and sampling entry points
-from sample import sample as tabddpm_sample
-from train import train as tabddpm_train
+
 # %%
 
 
