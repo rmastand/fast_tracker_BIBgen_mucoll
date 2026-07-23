@@ -45,8 +45,8 @@ with open("configs.yaml", "r") as f:
 BIN_BOUND = configs["BIN_BOUND"]
 NUM_BINS = configs["NUM_BINS"]
 FEATURE_ORDER = configs["FEATURE_ORDER"]
-SAVE_DIR = configs["SAVE_DIR"]
-WANDB_DIR = configs["WANDB_DIR"]
+SAVE_DIR = configs["PATH_TO_OUTPUT_DIR"]
+WANDB_DIR = configs["PATH_TO_WANDB_DIR"]
 
 # setup
 parser = argparse.ArgumentParser()
@@ -137,6 +137,7 @@ log_vars = []
 
 # %%
 
+# shiyu lots of printouts I don't understand
 # shiyu whose local phu transformation did you use?
 X, feature_labels = load_in_data(collection_list, args.BASIS, configs["PATH_TO_DATA_DIR"], args.TRAINING_FRAC, args.NUM_COND_INPUTS, feature_order=FEATURE_ORDER)
 
