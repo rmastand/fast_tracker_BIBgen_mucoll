@@ -22,7 +22,7 @@ from helpers.data_transforms import (
 )
 from helpers.evaluation import evaluate_samples
 from helpers.flow import run_training_step, sample_from_flow
-#plt.style.use("../science.mplstyle")
+plt.style.use("../science.mplstyle")
 
 # %%
 from helpers.plotting import plot_hists_1d, plot_corner_hist_2d
@@ -34,10 +34,6 @@ TABDDPM_SCRIPTS = TABDDPM_ROOT / "scripts"
 for path in (str(TABDDPM_ROOT), str(TABDDPM_SCRIPTS)):
     if path not in sys.path:
         sys.path.insert(0, path)
-
-# shiyu can you adjust the printouts for your model
-
-
 
 with open("configs.yaml", "r") as f:
     configs = yaml.safe_load(f)
@@ -62,7 +58,7 @@ parser.add_argument("--TRAIN", action="store_true", help="Whether to train the f
 parser.add_argument("--EVAL", action="store_true", help="Whether to evaluate the flow after training")
 parser.add_argument("--NUM_BDTS", type=int, default=5, help="For sample evaluation")
 parser.add_argument("--BDT_SUBSAMPLE_FRAC", type=float, default=1.0, help="Evaluation subsample fraction")
-parser.add_argument("--SEED", type=int, default=8, help="Random seed")  # shiyu: do you have a random seed?
+parser.add_argument("--SEED", type=int, default=8, help="Random seed") 
 parser.add_argument("--TRAINING_FRAC", type=float, default=1.0, help="How much training data to use")
 
 
@@ -81,7 +77,7 @@ parser.add_argument("--PLOT_EPOCH_INTERVAL", type=int, default=1, help="Interval
 
 
 # TabDDPM-specific arguments
-parser.add_argument("--STEPS", type=int, default=5, help="Number of TabDDPM training steps")
+parser.add_argument("--STEPS", type=int, default=5000, help="Number of TabDDPM training steps")
 parser.add_argument("--WEIGHT_DECAY", type=float, default=0.0, help="TabDDPM optimizer weight decay")
 parser.add_argument("--NUM_TIMESTEPS", type=int, default=100, help="Number of diffusion timesteps")
 parser.add_argument("--SAMPLE_BATCH_SIZE", type=int, default=4096, help="TabDDPM sampling batch size")
@@ -137,12 +133,10 @@ log_vars = []
 
 # %%
 
-# shiyu lots of printouts I don't understand
-# shiyu whose local phu transformation did you use?
+# shiyu whose local phi transformation did you use?
 X, feature_labels = load_in_data(collection_list, args.BASIS, configs["PATH_TO_DATA_DIR"], args.TRAINING_FRAC, args.NUM_COND_INPUTS, feature_order=FEATURE_ORDER)
 
 # Keep a global reference for evaluating the final global samples
-# shiyu walk my though this and all of data_transforms
 X_global = inverse_geometry_transform(X, args.BASIS, collection_list[0], FEATURE_ORDER)
 global_feature_labels = [label.replace(" (local)", "") for label in feature_labels]
 
@@ -161,6 +155,7 @@ for i in range(X.shape[1]):
 
 
 # make a common train-test split
+# STRATIFY HERE
 X_train, X_val, train_indices, val_indices = train_test_split(X, np.arange(len(X)), test_size=0.2, random_state=42)
 
 fig_samp, axes_samp = plot_corner_hist_2d(
@@ -197,8 +192,6 @@ n_classes = export_dataset(
     train_indices,
     val_indices,
 )
-
-
 
 if args.MODEL == "tabddpm":
 
@@ -429,7 +422,6 @@ if args.EVAL:
     print("     Making samples...")
 
     if args.MODEL == "tabddpm":
-        # shiyu can you add plotting to your section
         # shiyu are you using the same context that I am when to generate the final samples? We should probably both be using the same context. Maybe we can just use the full train sample
 
         tabddpm_sample(
@@ -451,6 +443,8 @@ if args.EVAL:
             change_val=False,
         )
 
+        # shiyu change to full dataset
+
         X_generated = np.load(Path(save_dir) / "X_num_train.npy").astype(np.float32)
         y_generated = np.load(Path(save_dir) / "y_train.npy").astype(np.int64)
 
@@ -460,12 +454,8 @@ if args.EVAL:
             condition_generated = y_lookup[y_generated]
             samples = np.concatenate([X_generated, condition_generated], axis=1)
 
-        # shiyu I'm a little confused by how this works, particularly if the basis is in local
-        # shiyu whos local transformation did you use
-        # shiyu why only save global samples?
-
    
-        
+
 
     elif args.MODEL == "flow":
 
@@ -488,7 +478,7 @@ if args.EVAL:
                 else:
                     context_to_sample = None
 
-                loc_samples = sample_from_flow(flow, N=args.OVERSAMPLE, x_context=context_to_sample)
+                loc_samples = sample_from_flow(flow, N=args.OVERSAMPLE*len(X[i:i+nn]), x_context=context_to_sample)
                 samples.append(loc_samples)
         samples = np.concatenate(samples)
         samples = inverse_preprocess_data(samples, save_dir,  args.ZUKO_ID,  args.NUM_COND_INPUTS)
@@ -499,7 +489,7 @@ if args.EVAL:
     samples_global = inverse_geometry_transform(samples, args.BASIS, collection_list[0], FEATURE_ORDER)
     np.save(Path(save_dir) / "generated_samples.npy", samples_global)
         
-    # shiyu What is all fo the global?
+
 
     fig_samp, axes_samp = plot_corner_hist_2d(samples, feature_labels=feature_labels, bins_dict=bins_dict, log_dims=log_vars, title= f"generated_{args.BASIS}",)
     plt.savefig(f"{plots_dir}/corner_generated_{args.BASIS}_final")
