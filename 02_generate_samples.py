@@ -55,7 +55,7 @@ parser.add_argument("--COLLECTION_LIST", type=str, default="OuterTrackerBarrelCo
 parser.add_argument("--BASIS", choices=["xy", "rphi", "local_phi"], default="rphi", help="Coordinate basis used for training")
 parser.add_argument("--TRAIN", action="store_true", help="Whether to train the flow")
 parser.add_argument("--EVAL", action="store_true", help="Whether to evaluate the flow after training")
-parser.add_argument("--NUM_BDTS", type=int, default=5, help="For sample evaluation")
+parser.add_argument("--NUM_BDTS", type=int, default=3, help="For sample evaluation")
 parser.add_argument("--BDT_SUBSAMPLE_FRAC", type=float, default=1.0, help="Evaluation subsample fraction")
 parser.add_argument("--SEED", type=int, default=8, help="Random seed") 
 parser.add_argument("--TRAINING_FRAC", type=float, default=1.0, help="How much training data to use")
@@ -73,7 +73,7 @@ parser.add_argument("--FREQS", type=int, default=3, help="Freqs for CNF")
 parser.add_argument("--BINS", type=int, default=16, help="Freqs for CNF")
 parser.add_argument("--DEGREE", type=int, default=3, help="Freqs for CNF")
 parser.add_argument("--POLYNOMIALS", type=int, default=4, help="Freqs for CNF")
-parser.add_argument("--PLOT_EPOCH_INTERVAL", type=int, default=1, help="Interval for plotting during training")
+parser.add_argument("--PLOT_EPOCH_INTERVAL", type=int, default=50, help="Interval for plotting during training")
 
 
 # TabDDPM-specific arguments
@@ -123,6 +123,7 @@ wandb.init(
 # computing
 device = torch.device( "cuda" if torch.cuda.is_available() else "cpu")
 print( "Using device: " + str( device ), flush=True)
+
 seed = int(args.SEED)
 torch.manual_seed(seed)
 np.random.seed(seed)
@@ -153,7 +154,6 @@ for i in range(X.shape[1]):
     else:
         bins_dict[i] = np.linspace(np.min(X[:,i] - 1), np.max(X[:,i] + 1), NUM_BINS) 
 
-
 # Pack condition rows once for the shared stratified split and TabDDPM class labels.
 condition_ids = None
 condition_lookup = None
@@ -161,7 +161,6 @@ if args.NUM_COND_INPUTS > 0:
     condition_ids, condition_lookup = pack_condition_rows(X[:, NUM_FEATURES:])
 
 X_train, X_val, train_indices, val_indices = train_test_split(X, np.arange(len(X)), test_size=0.2, random_state=42, stratify=condition_ids)
-
 fig_samp, axes_samp = plot_corner_hist_2d(
         X_train,
         feature_labels=feature_labels,
