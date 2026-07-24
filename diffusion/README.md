@@ -8,8 +8,8 @@
 - Official source: `diffusion/tabddpm_official/`
 
 Project-specific data loading, training, sampling, and evaluation are
-implemented in `run_zuko.py` and `helpers/`. The official source is included
-in full, with one compatibility change documented below.
+implemented in `02_generate_samples.py` and `helpers/`. The official source is
+included in full, with the changes documented below.
 
 ## 2. Environment
 
@@ -40,8 +40,12 @@ The integration is compatible with the versions above; dependency warnings
 from `libzero` and `rtdl` can be ignored.
 
 The original TabDDPM environment used Python 3.9.7, PyTorch 1.10.1+cu111, and
-scikit-learn 1.0.2. For modern scikit-learn,
-`diffusion/tabddpm_official/lib/data.py:221` changes `subsample=1e9` to
-`subsample=int(1e9)`. The value is unchanged, and all other official source
-code remains unmodified. The original dependency pins are preserved in
-`tabddpm_official/requirements.txt`.
+scikit-learn 1.0.2. Two official-source lines are changed:
+
+- `diffusion/tabddpm_official/lib/data.py:221`:
+  `subsample=1e9` -> `subsample=int(1e9)` for modern scikit-learn.
+- `diffusion/tabddpm_official/scripts/sample.py:79`:
+  `D.y['train']` -> `np.concatenate([D.y['train'], D.y['val']])` so Flow and
+  TabDDPM sample from the same full context distribution.
+
+All other official source code remains unmodified.

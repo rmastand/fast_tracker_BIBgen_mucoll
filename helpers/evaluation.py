@@ -532,7 +532,7 @@ def run_eval_suite(reference, generated_samples, save_dir, evaluation_name, num_
 def evaluate_samples(samples, samples_global, basis, X, X_global, feature_labels, global_feature_labels, save_dir, NUM_BINS, NUM_BDTS, BDT_SUBSAMPLE_FRAC, device, log_vars):
     evaluations = [(basis, X, samples, feature_labels)]
 
-    if basis in ["local_phi", "local_rphi"]:
+    if basis == "local_phi":
         evaluations.append(("global", X_global, samples_global, global_feature_labels))
 
     results_dir = {}

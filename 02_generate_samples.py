@@ -49,11 +49,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--MODEL", choices=["flow", "tabddpm"],default="flow", help="Generative_model")
 parser.add_argument("--ZUKO_ID", type=str, default="NCSF", help="Zuko model ID")
 parser.add_argument("--NAME", type=str, default="", help="Name")
-parser.add_argument("--OVERSAMPLE", default=1, type=int)
-# shiyu are you using this argument 
+parser.add_argument("--OVERSAMPLE", default=1, type=int, help="Number of generated samples per reference row")
 # data + evaluation
 parser.add_argument("--COLLECTION_LIST", type=str, default="OuterTrackerBarrelCollection")
-parser.add_argument("--BASIS", choices=["xy", "rphi", "local_phi", "local_rphi"], default="rphi", help="Coordinate basis used for training")
+parser.add_argument("--BASIS", choices=["xy", "rphi", "local_phi"], default="rphi", help="Coordinate basis used for training")
 parser.add_argument("--TRAIN", action="store_true", help="Whether to train the flow")
 parser.add_argument("--EVAL", action="store_true", help="Whether to evaluate the flow after training")
 parser.add_argument("--NUM_BDTS", type=int, default=5, help="For sample evaluation")
@@ -100,6 +99,7 @@ elif args.MODEL == "tabddpm":
     from sample import sample as tabddpm_sample
     from train import train as tabddpm_train
 
+dataset_dir = Path(save_dir) / "dataset"
 os.makedirs(save_dir, exist_ok=True)
 wandb_dir = f"{WANDB_DIR}"
 os.makedirs(wandb_dir, exist_ok=True)
@@ -107,7 +107,7 @@ plots_dir = f"{save_dir}/plots"
 os.makedirs(plots_dir, exist_ok=True)
 
 # Keep W&B and saved configs limited to parameters used by the selected model
-flow_only_args = "ZUKO_ID OVERSAMPLE NUM_EPOCHS TRANSFORMS HIDDEN_FEATURES FREQS BINS DEGREE POLYNOMIALS PLOT_EPOCH_INTERVAL CHECKPOINT_EPOCH_INTERVAL TRAIN_FLOW EVAL_FLOW".split()
+flow_only_args = "ZUKO_ID NUM_EPOCHS TRANSFORMS HIDDEN_FEATURES FREQS BINS DEGREE POLYNOMIALS PLOT_EPOCH_INTERVAL CHECKPOINT_EPOCH_INTERVAL TRAIN_FLOW EVAL_FLOW".split()
 tabddpm_only_args = "STEPS WEIGHT_DECAY NUM_TIMESTEPS SAMPLE_BATCH_SIZE SCHEDULER D_LAYERS DIM_T NORMALIZATION Y_MODE TRAIN_TABDDPM EVAL_TABDDPM".split()
 unused_args = tabddpm_only_args if args.MODEL == "flow" else flow_only_args
 run_config = {key:value for key, value in vars(args).items() if key not in unused_args}
@@ -133,7 +133,6 @@ log_vars = []
 
 # %%
 
-# shiyu whose local phi transformation did you use?
 X, feature_labels = load_in_data(collection_list, args.BASIS, configs["PATH_TO_DATA_DIR"], args.TRAINING_FRAC, args.NUM_COND_INPUTS, feature_order=FEATURE_ORDER)
 
 # Keep a global reference for evaluating the final global samples
@@ -154,9 +153,13 @@ for i in range(X.shape[1]):
         bins_dict[i] = np.linspace(np.min(X[:,i] - 1), np.max(X[:,i] + 1), NUM_BINS) 
 
 
-# make a common train-test split
-# STRATIFY HERE
-X_train, X_val, train_indices, val_indices = train_test_split(X, np.arange(len(X)), test_size=0.2, random_state=42)
+# Pack condition rows once for the shared stratified split and TabDDPM class labels.
+condition_ids = None
+condition_lookup = None
+if args.NUM_COND_INPUTS > 0:
+    condition_ids, condition_lookup = pack_condition_rows(X[:, NUM_FEATURES:])
+
+X_train, X_val, train_indices, val_indices = train_test_split(X, np.arange(len(X)), test_size=0.2, random_state=42, stratify=condition_ids)
 
 fig_samp, axes_samp = plot_corner_hist_2d(
         X_train,
@@ -175,7 +178,8 @@ if args.MODEL == "tabddpm":
         y_lookup = None
     else: # conditioning on the features, so pack the conditioning features into a single integer label
         X_values = X[:, :NUM_FEATURES].astype(np.float32)
-        y_values, y_lookup = pack_condition_rows(X[:, NUM_FEATURES:])
+        y_values = condition_ids
+        y_lookup = condition_lookup
         np.save(Path(save_dir) / "y_lookup.npy", y_lookup)
     is_y_cond = args.Y_MODE == "cond"
 
@@ -186,7 +190,7 @@ elif args.MODEL == "flow":
 
 
 n_classes = export_dataset(
-    save_dir ,
+    dataset_dir,
     X_values,
     y_values,
     train_indices,
@@ -271,7 +275,7 @@ if args.TRAIN:
     if args.MODEL == "tabddpm":
         tabddpm_train(
             parent_dir=str(save_dir),
-            real_data_path=str(save_dir),
+            real_data_path=str(dataset_dir),
             steps=args.STEPS,
             lr=args.LEARNING_RATE,
             weight_decay=args.WEIGHT_DECAY,
@@ -422,13 +426,13 @@ if args.EVAL:
     print("     Making samples...")
 
     if args.MODEL == "tabddpm":
-        # shiyu are you using the same context that I am when to generate the final samples? We should probably both be using the same context. Maybe we can just use the full train sample
+        # Sample conditions from the full train and validation context distribution.
 
         tabddpm_sample(
             parent_dir=str(save_dir),
-            real_data_path=str(save_dir),
+            real_data_path=str(dataset_dir),
             batch_size=args.SAMPLE_BATCH_SIZE,
-            num_samples=len(X_values),
+            num_samples=int(len(X_values) * args.OVERSAMPLE),
             model_type="mlp",
             model_params=model_params,
             model_path=str(Path(save_dir) / "model.pt"),
@@ -442,8 +446,6 @@ if args.EVAL:
             seed=args.SEED,
             change_val=False,
         )
-
-        # shiyu change to full dataset
 
         X_generated = np.load(Path(save_dir) / "X_num_train.npy").astype(np.float32)
         y_generated = np.load(Path(save_dir) / "y_train.npy").astype(np.int64)
@@ -478,7 +480,8 @@ if args.EVAL:
                 else:
                     context_to_sample = None
 
-                loc_samples = sample_from_flow(flow, N=args.OVERSAMPLE*len(X[i:i+nn]), x_context=context_to_sample)
+                n_samples = args.OVERSAMPLE if context_to_sample is not None else args.OVERSAMPLE * nn
+                loc_samples = sample_from_flow(flow, N=n_samples, x_context=context_to_sample)
                 samples.append(loc_samples)
         samples = np.concatenate(samples)
         samples = inverse_preprocess_data(samples, save_dir,  args.ZUKO_ID,  args.NUM_COND_INPUTS)

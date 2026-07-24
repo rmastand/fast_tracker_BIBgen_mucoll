@@ -74,7 +74,9 @@ def sample(
     diffusion.to(device)
     diffusion.eval()
     
-    _, empirical_class_dist = torch.unique(torch.from_numpy(D.y['train']), return_counts=True)
+    # _, empirical_class_dist = torch.unique(torch.from_numpy(D.y['train']), return_counts=True)
+    # Match the full train and validation context distribution used for final Flow sampling.
+    _, empirical_class_dist = torch.unique(torch.from_numpy(np.concatenate([D.y['train'], D.y['val']])), return_counts=True)
     # empirical_class_dist = empirical_class_dist.float() + torch.tensor([-5000., 10000.]).float()
     if disbalance == 'fix':
         empirical_class_dist[0], empirical_class_dist[1] = empirical_class_dist[1], empirical_class_dist[0]
