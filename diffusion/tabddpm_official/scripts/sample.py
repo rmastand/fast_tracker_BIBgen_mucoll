@@ -33,7 +33,8 @@ def sample(
     disbalance = None,
     device = torch.device('cuda:1'),
     seed = 0,
-    change_val = False
+    change_val = False,
+    y_to_sample = None
 ):
     zero.improve_reproducibility(seed)
 
@@ -78,7 +79,26 @@ def sample(
     # Match the full train and validation context distribution used for final Flow sampling.
     _, empirical_class_dist = torch.unique(torch.from_numpy(np.concatenate([D.y['train'], D.y['val']])), return_counts=True)
     # empirical_class_dist = empirical_class_dist.float() + torch.tensor([-5000., 10000.]).float()
-    if disbalance == 'fix':
+    # Preserve the requested condition order for direct comparison with Flow.
+    if y_to_sample is not None:
+        y_to_sample = np.asarray(y_to_sample)
+        order = np.argsort(y_to_sample, kind='stable')
+        classes, counts = np.unique(y_to_sample, return_counts=True)
+
+        samples = []
+        for class_id, count in zip(classes, counts):
+            y_dist = torch.zeros_like(empirical_class_dist).float()
+            y_dist[int(class_id)] = 1
+            x, _ = diffusion.sample_all(int(count), min(batch_size, int(count)), y_dist, ddim=False)
+            samples.append(x)
+
+        samples = torch.cat(samples)
+        x_gen = torch.empty_like(samples)
+        x_gen[torch.as_tensor(order)] = samples
+        y_gen = torch.as_tensor(y_to_sample)
+
+    # Original branch: if disbalance == 'fix':
+    elif disbalance == 'fix':
         empirical_class_dist[0], empirical_class_dist[1] = empirical_class_dist[1], empirical_class_dist[0]
         x_gen, y_gen = diffusion.sample_all(num_samples, batch_size, empirical_class_dist.float(), ddim=False)
 

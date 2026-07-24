@@ -424,6 +424,7 @@ if args.EVAL:
 
     print(f"\nEvaluating {args.MODEL} model...")
     print("     Making samples...")
+    sample_indices = np.tile(np.arange(len(X)), args.OVERSAMPLE)
 
     if args.MODEL == "tabddpm":
         # Sample conditions from the full train and validation context distribution.
@@ -445,6 +446,7 @@ if args.EVAL:
             device=device,
             seed=args.SEED,
             change_val=False,
+            y_to_sample=y_values[sample_indices] if args.Y_MODE == "cond" else None,
         )
 
         X_generated = np.load(Path(save_dir) / "X_num_train.npy").astype(np.float32)
@@ -465,7 +467,7 @@ if args.EVAL:
         flow.load_state_dict(ckpt["model_state_dict"])
         flow.eval()
 
-        num_samples_total = len(X)
+        num_samples_total = len(sample_indices)
         sample_batch_size = 8192 * 2
 
         samples = []
@@ -475,12 +477,12 @@ if args.EVAL:
 
                 if args.NUM_COND_INPUTS > 0:
                     context_to_sample = torch.tensor(
-                        X[i:i+nn, -args.NUM_COND_INPUTS:], dtype=torch.float32
+                        X[sample_indices[i:i+nn], -args.NUM_COND_INPUTS:], dtype=torch.float32
                     ).to(device)
                 else:
                     context_to_sample = None
 
-                n_samples = args.OVERSAMPLE if context_to_sample is not None else args.OVERSAMPLE * nn
+                n_samples = 1 if context_to_sample is not None else nn
                 loc_samples = sample_from_flow(flow, N=n_samples, x_context=context_to_sample)
                 samples.append(loc_samples)
         samples = np.concatenate(samples)

@@ -40,12 +40,15 @@ The integration is compatible with the versions above; dependency warnings
 from `libzero` and `rtdl` can be ignored.
 
 The original TabDDPM environment used Python 3.9.7, PyTorch 1.10.1+cu111, and
-scikit-learn 1.0.2. Two official-source lines are changed:
+scikit-learn 1.0.2. The official-source changes are documented below:
 
 - `diffusion/tabddpm_official/lib/data.py:221`:
   `subsample=1e9` -> `subsample=int(1e9)` for modern scikit-learn.
 - `diffusion/tabddpm_official/scripts/sample.py:79`:
   `D.y['train']` -> `np.concatenate([D.y['train'], D.y['val']])` so Flow and
   TabDDPM sample from the same full context distribution.
+- `diffusion/tabddpm_official/scripts/sample.py:36-98`:
+  add optional `y_to_sample` support using the existing one-hot
+  `diffusion.sample_all()` interface, preserving the requested condition order.
 
 All other official source code remains unmodified.
