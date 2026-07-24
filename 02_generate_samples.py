@@ -63,6 +63,7 @@ parser.add_argument("--TRAINING_FRAC", type=float, default=1.0, help="How much t
 
 # flow-specific arguments
 parser.add_argument("--NUM_EPOCHS", type=int, default=5, help="Number of training epochs")
+# Keep the Flow defaults; for TabDDPM, use --LEARNING_RATE 5e-4 --BATCH_SIZE 4096.
 parser.add_argument("--LEARNING_RATE", type=float, default=1e-3, help="Learning rate")
 parser.add_argument("--BATCH_SIZE", type=int, default=512, help="Batch size")
 parser.add_argument("--NUM_COND_INPUTS", type=int, default=0, help="Number of conditional inputs")
@@ -76,13 +77,13 @@ parser.add_argument("--PLOT_EPOCH_INTERVAL", type=int, default=1, help="Interval
 
 
 # TabDDPM-specific arguments
-parser.add_argument("--STEPS", type=int, default=5000, help="Number of TabDDPM training steps")
+parser.add_argument("--STEPS", type=int, default=300000, help="Number of TabDDPM training steps")
 parser.add_argument("--WEIGHT_DECAY", type=float, default=0.0, help="TabDDPM optimizer weight decay")
-parser.add_argument("--NUM_TIMESTEPS", type=int, default=100, help="Number of diffusion timesteps")
+parser.add_argument("--NUM_TIMESTEPS", type=int, default=1000, help="Number of diffusion timesteps")
 parser.add_argument("--SAMPLE_BATCH_SIZE", type=int, default=4096, help="TabDDPM sampling batch size")
 parser.add_argument("--SCHEDULER", type=str, default="cosine", help="Diffusion noise scheduler")
-parser.add_argument("--D_LAYERS", type=str, default="1024,512,512,1024", help="TabDDPM MLP hidden layers")
-parser.add_argument("--DIM_T", type=int, default=256, help="Diffusion timestep embedding dimension")
+parser.add_argument("--D_LAYERS", type=str, default="4096,4096,4096,4096,4096,4096", help="TabDDPM MLP hidden layers")
+parser.add_argument("--DIM_T", type=int, default=2048, help="Diffusion timestep embedding dimension")
 parser.add_argument("--NORMALIZATION", type=str, default="quantile", help="TabDDPM numerical normalization")
 parser.add_argument("--Y_MODE", choices=["cond", "joint", "none"], default="cond", help="TabDDPM conditioning mode")
 
