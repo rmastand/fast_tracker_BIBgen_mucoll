@@ -6,6 +6,7 @@ from scipy.stats import ks_2samp, wasserstein_distance
 from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
 from sklearn.model_selection import train_test_split
 import numpy as np
+import sys
 
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
@@ -15,6 +16,24 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 from helpers.plotting import plot_hists_1d, plot_corner_hist_2d
+
+
+class _Tee:
+    """Write to both the original stream and a file simultaneously."""
+    def __init__(self, original, file):
+        self._original = original
+        self._file = file
+
+    def write(self, data):
+        self._original.write(data)
+        self._file.write(data)
+
+    def flush(self):
+        self._original.flush()
+        self._file.flush()
+
+    def __getattr__(self, attr):
+        return getattr(self._original, attr)
 
 
 
@@ -105,9 +124,6 @@ def discriminate_data_from_samples(
         data = data[idx_data]
         samples = samples[idx_samples]
 
-    if verbose:
-        print(data.shape, samples.shape)
-
     # ======================
     # Split data
     # ======================
@@ -148,6 +164,7 @@ def discriminate_data_from_samples(
                 objective="binary:logistic",
                 random_state=i,
                 eval_metric="logloss",
+                device=device,
             )
             eval_set = [(X_train, Y_train), (X_val, Y_val)]
             model.fit(X_train, Y_train, eval_set=eval_set, verbose=False)
@@ -383,16 +400,47 @@ def plot_pairwise_auc_matrix(auc_matrix, feature_labels=None):
 
 
 def run_eval_suite_BDTs(
-        data, 
-        samples_dict, 
+        data,
+        samples_dict,
         bins,
         n_cond,
         device,
-        num_BDTs=3, 
-        run_single_feature_BDTs=True, 
+        num_BDTs=3,
+        run_single_feature_BDTs=True,
         plot_suffix="",
         log_vars=[],
         feature_labels=None,
+        plot_dir="."
+        ):
+
+    log_path = f"{plot_dir}/bdt_results{plot_suffix}.txt"
+    _log_file = open(log_path, "w")
+    _orig_stdout = sys.stdout
+    sys.stdout = _Tee(_orig_stdout, _log_file)
+
+    try:
+      return _run_eval_suite_BDTs_inner(
+          data, samples_dict, bins, n_cond, device,
+          num_BDTs, run_single_feature_BDTs, plot_suffix,
+          log_vars, feature_labels, plot_dir
+      )
+    finally:
+        sys.stdout = _orig_stdout
+        _log_file.close()
+
+
+def _run_eval_suite_BDTs_inner(
+        data,
+        samples_dict,
+        bins,
+        n_cond,
+        device,
+        num_BDTs=3,
+        run_single_feature_BDTs=True,
+        plot_suffix="",
+        log_vars=[],
+        feature_labels=None,
+        plot_dir="."
         ):
 
     print(f"Len data: {len(data)}")
@@ -434,10 +482,13 @@ def run_eval_suite_BDTs(
                                                 plot_losses=False,
                                                 device="cuda",
                                                 val_size = 0.2, 
-                                                plot_dir="."
+                                                plot_dir=plot_dir,
+                                                verbose=True
                                             )
 
+
         print("\nFeature importances (full BDT):")
+
 
         importances = np.array([bdt.feature_importances_ for bdt in bdt_list])
         mean_importance = importances.mean(axis=0)
@@ -446,8 +497,6 @@ def run_eval_suite_BDTs(
         for i, (mean, std) in enumerate(zip(mean_importance, std_importance)):
             label = feature_labels[i] if feature_labels else f"Feature {i}"
             print(f"{label}: {mean:.4f} ± {std:.4f}")
-
-    
     
         print(f"auc {auc_mean} \pm {auc_std}. best epoch {best_epoch_list} of {max_epochs}.\n")
         loc_scores_list.append(loc_scores)
@@ -460,6 +509,8 @@ def run_eval_suite_BDTs(
             X_plot[f"samples, top {p}%"] =  samples_test[loc_scores >= np.percentile(loc_scores, p)]
     
         plot_hists_1d({"data":data, **X_plot}, bins, log_dims=log_vars, labels=feature_labels)
+        plt.savefig(f"{plot_dir}/hists_BDT_{sample_key}{plot_suffix}.png")
+        plt.close()
 
     
         
@@ -471,7 +522,9 @@ def run_eval_suite_BDTs(
     plt.legend()
     plt.xlabel("scores")
     plt.ylabel("Density")
-    plt.show()
+    plt.savefig(f"{plot_dir}/hists_BDT_{sample_key}{plot_suffix}.png")
+    plt.close()
+    
 
 
     return single_bdt_results, scores_results, X_plot_results

@@ -43,6 +43,7 @@ NUM_BINS = configs["NUM_BINS"]
 FEATURE_ORDER = configs["FEATURE_ORDER"]
 SAVE_DIR = configs["PATH_TO_OUTPUT_DIR"]
 WANDB_DIR = configs["PATH_TO_WANDB_DIR"]
+NUM_COND_INPUTS = configs["NUM_COND_INPUTS"]
 
 # setup
 parser = argparse.ArgumentParser()
@@ -66,7 +67,6 @@ parser.add_argument("--NUM_EPOCHS", type=int, default=5, help="Number of trainin
 # Keep the Flow defaults; for TabDDPM, use --LEARNING_RATE 5e-4 --BATCH_SIZE 4096.
 parser.add_argument("--LEARNING_RATE", type=float, default=1e-3, help="Learning rate")
 parser.add_argument("--BATCH_SIZE", type=int, default=512, help="Batch size")
-parser.add_argument("--NUM_COND_INPUTS", type=int, default=0, help="Number of conditional inputs")
 parser.add_argument("--TRANSFORMS", type=int, default=3, help="Number of transforms ")
 parser.add_argument("--HIDDEN_FEATURES", type=str, default="32,32,32", help="Number of hidden features")
 parser.add_argument("--FREQS", type=int, default=3, help="Freqs for CNF")
@@ -80,7 +80,7 @@ parser.add_argument("--PLOT_EPOCH_INTERVAL", type=int, default=50, help="Interva
 parser.add_argument("--STEPS", type=int, default=300000, help="Number of TabDDPM training steps")
 parser.add_argument("--WEIGHT_DECAY", type=float, default=0.0, help="TabDDPM optimizer weight decay")
 parser.add_argument("--NUM_TIMESTEPS", type=int, default=1000, help="Number of diffusion timesteps")
-parser.add_argument("--SAMPLE_BATCH_SIZE", type=int, default=4096*4, help="TabDDPM sampling batch size")
+parser.add_argument("--SAMPLE_BATCH_SIZE", type=int, default=4096*2, help="TabDDPM sampling batch size")
 parser.add_argument("--SCHEDULER", type=str, default="cosine", help="Diffusion noise scheduler")
 parser.add_argument("--D_LAYERS", type=str, default="4096,4096,4096,4096,4096,4096", help="TabDDPM MLP hidden layers")
 parser.add_argument("--DIM_T", type=int, default=2048, help="Diffusion timestep embedding dimension")
@@ -135,7 +135,7 @@ log_vars = []
 
 # %%
 
-X, feature_labels = load_in_data(collection_list, args.BASIS, configs["PATH_TO_DATA_DIR"], args.TRAINING_FRAC, args.NUM_COND_INPUTS, feature_order=FEATURE_ORDER)
+X, feature_labels = load_in_data(collection_list, args.BASIS, configs["PATH_TO_DATA_DIR"], args.TRAINING_FRAC, NUM_COND_INPUTS, feature_order=FEATURE_ORDER)
 
 # Keep a global reference for evaluating the final global samples
 X_global = inverse_geometry_transform(X, args.BASIS, collection_list[0], FEATURE_ORDER)
@@ -143,7 +143,7 @@ global_feature_labels = [label.replace(" (local)", "") for label in feature_labe
 
 print(f"Data has shape {X.shape}")
 print("Feature labels:", feature_labels)
-NUM_FEATURES = X.shape[1] - args.NUM_COND_INPUTS
+NUM_FEATURES = X.shape[1] - NUM_COND_INPUTS
 
 bins_dict = {}
 bins_dict_preproc = {i:np.linspace(-BIN_BOUND, BIN_BOUND, NUM_BINS) for i in range(X.shape[1])}
@@ -157,7 +157,7 @@ for i in range(X.shape[1]):
 # Pack condition rows once for the shared stratified split and TabDDPM class labels.
 condition_ids = None
 condition_lookup = None
-if args.NUM_COND_INPUTS > 0:
+if NUM_COND_INPUTS > 0:
     condition_ids, condition_lookup = pack_condition_rows(X[:, NUM_FEATURES:])
 
 X_train, X_val, train_indices, val_indices = train_test_split(X, np.arange(len(X)), test_size=0.2, random_state=42, stratify=condition_ids)
@@ -232,17 +232,17 @@ elif args.MODEL == "flow":
 
     # choose flow model
     if args.ZUKO_ID == "NSF":
-        flow = zuko.flows.NSF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
+        flow = zuko.flows.NSF(NUM_FEATURES, NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
     elif args.ZUKO_ID == "MAF":
-        flow = zuko.flows.MAF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
+        flow = zuko.flows.MAF(NUM_FEATURES, NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
     elif args.ZUKO_ID == "NCSF":
-        flow = zuko.flows.NCSF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, bins=args.BINS).to(device)
+        flow = zuko.flows.NCSF(NUM_FEATURES, NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, bins=args.BINS).to(device)
     elif args.ZUKO_ID == "SOSPF":
-        flow = zuko.flows.SOSPF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, degree=args.DEGREE, polynomials=args.POLYNOMIALS).to(device)
+        flow = zuko.flows.SOSPF(NUM_FEATURES, NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, degree=args.DEGREE, polynomials=args.POLYNOMIALS).to(device)
     elif args.ZUKO_ID == "UNAF":
-        flow = zuko.flows.UNAF(NUM_FEATURES, args.NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
+        flow = zuko.flows.UNAF(NUM_FEATURES, NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
     elif args.ZUKO_ID == "CNF":
-        flow = zuko.flows.CNF(NUM_FEATURES, args.NUM_COND_INPUTS, hidden_features=hidden_features, freqs=args.FREQS).to(device)
+        flow = zuko.flows.CNF(NUM_FEATURES, NUM_COND_INPUTS, hidden_features=hidden_features, freqs=args.FREQS).to(device)
     else:
         print("ERROR: Unknown ZUKO_ID")
         exit()
@@ -306,8 +306,8 @@ if args.TRAIN:
 
         # preprocess the flow data
 
-        X_train = preprocess_data(X_train, save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS, scaler_exists=False)
-        X_val = preprocess_data(X_val, save_dir, args.ZUKO_ID, args.NUM_COND_INPUTS, scaler_exists=True)
+        X_train = preprocess_data(X_train, save_dir, args.ZUKO_ID, NUM_COND_INPUTS, scaler_exists=False)
+        X_val = preprocess_data(X_val, save_dir, args.ZUKO_ID, NUM_COND_INPUTS, scaler_exists=True)
 
         print(f"Train data has shape {X_train.shape}.")
         print(f"Val data has shape {X_val.shape}.")
@@ -335,10 +335,10 @@ if args.TRAIN:
 
         for k in range(start_epoch, args.NUM_EPOCHS):
 
-            train_losses = run_training_step(flow, optimizer, train_loader, device, k, args.NUM_COND_INPUTS, is_val_step=False)
+            train_losses = run_training_step(flow, optimizer, train_loader, device, k, NUM_COND_INPUTS, is_val_step=False)
 
             with torch.no_grad():
-                val_losses = run_training_step(flow, optimizer, val_loader, device, k, args.NUM_COND_INPUTS, is_val_step=True)
+                val_losses = run_training_step(flow, optimizer, val_loader, device, k, NUM_COND_INPUTS, is_val_step=True)
 
             wandb.log(
                 {   
@@ -372,10 +372,10 @@ if args.TRAIN:
                 
                     x_plot = next(iter(val_loader)).to(device).float()
                 
-                    if args.NUM_COND_INPUTS > 0:
-                        x_plot_data = x_plot[:, :-args.NUM_COND_INPUTS]
-                        x_plot_context = x_plot[:, -args.NUM_COND_INPUTS:]
-                        samples = sample_from_flow(flow, N=args.OVERSAMPLE, x_context=x_plot_context if args.NUM_COND_INPUTS > 0 else None)
+                    if NUM_COND_INPUTS > 0:
+                        x_plot_data = x_plot[:, :-NUM_COND_INPUTS]
+                        x_plot_context = x_plot[:, -NUM_COND_INPUTS:]
+                        samples = sample_from_flow(flow, N=args.OVERSAMPLE, x_context=x_plot_context if NUM_COND_INPUTS > 0 else None)
                     else:
                         samples = sample_from_flow(flow, N=args.OVERSAMPLE * len(x_plot))
                 
@@ -384,14 +384,14 @@ if args.TRAIN:
                             x_plot.detach().cpu().numpy(),
                             save_dir,
                             args.ZUKO_ID,
-                            args.NUM_COND_INPUTS,
+                            NUM_COND_INPUTS,
                         ),
 
                     "generated": inverse_preprocess_data(
                             samples,
                             save_dir,
                             args.ZUKO_ID,
-                            args.NUM_COND_INPUTS,
+                            NUM_COND_INPUTS,
                         ),
                     }
                     plot_hists_1d(loc_data_dict, bins_dict, log_dims=log_vars, labels=feature_labels)
@@ -423,6 +423,22 @@ if args.TRAIN:
 if args.EVAL:
 
     print(f"\nEvaluating {args.MODEL} model...")
+
+    # Determine output filename and seed, so repeated runs produce different samples.
+    existing_files = sorted(Path(save_dir).glob("generated_samples*.npy"))
+    n_existing = len(existing_files)
+    if n_existing == 0:
+        samples_out_path = Path(save_dir) / "generated_samples.npy"
+        sample_seed = seed
+    else:
+        samples_out_path = Path(save_dir) / f"generated_samples_{n_existing + 1}.npy"
+        sample_seed = seed + n_existing
+        print(f"     Found existing generated samples file(s): {[f.name for f in existing_files]}")
+        print(f"     Saving new samples to {samples_out_path.name} with seed {sample_seed}.")
+
+    torch.manual_seed(sample_seed)
+    np.random.seed(sample_seed)
+
     print("     Making samples...")
     sample_indices = np.tile(np.arange(len(X)), args.OVERSAMPLE)
 
@@ -444,13 +460,16 @@ if args.EVAL:
             num_numerical_features=X_values.shape[1],
             disbalance=None,
             device=device,
-            seed=args.SEED,
+            seed=sample_seed,
             change_val=False,
             y_to_sample=y_values[sample_indices] if args.Y_MODE == "cond" else None,
         )
 
+
         X_generated = np.load(Path(save_dir) / "X_num_train.npy").astype(np.float32)
         y_generated = np.load(Path(save_dir) / "y_train.npy").astype(np.int64)
+
+
 
         if args.Y_MODE == "none":
             samples = X_generated
@@ -476,9 +495,9 @@ if args.EVAL:
             for i in tqdm(range(0, num_samples_total, sample_batch_size)):
                 nn = min(sample_batch_size, num_samples_total - i)
 
-                if args.NUM_COND_INPUTS > 0:
+                if NUM_COND_INPUTS > 0:
                     context_to_sample = torch.tensor(
-                        X[sample_indices[i:i+nn], -args.NUM_COND_INPUTS:], dtype=torch.float32
+                        X[sample_indices[i:i+nn], -NUM_COND_INPUTS:], dtype=torch.float32
                     ).to(device)
                 else:
                     context_to_sample = None
@@ -486,13 +505,13 @@ if args.EVAL:
                 n_samples = 1 if context_to_sample is not None else nn
                 loc_samples = sample_from_flow(flow, N=n_samples, x_context=context_to_sample)
                 samples[i:i+nn] = loc_samples
-        samples = inverse_preprocess_data(samples, save_dir,  args.ZUKO_ID,  args.NUM_COND_INPUTS)
+        samples = inverse_preprocess_data(samples, save_dir,  args.ZUKO_ID,  NUM_COND_INPUTS)
 
 
 
 
     samples_global = inverse_geometry_transform(samples, args.BASIS, collection_list[0], FEATURE_ORDER)
-    np.save(Path(save_dir) / "generated_samples.npy", samples_global)
+    np.save(samples_out_path, samples_global)
         
     print("     Done making samples. Made samples with shape:", samples_global.shape)
 

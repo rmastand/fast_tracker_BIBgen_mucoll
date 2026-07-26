@@ -155,5 +155,5 @@ def make_2d_plots(data_array, labels, title):
 
     plt.suptitle(title)
 
-    plt.show()
+    return fig, ax
 

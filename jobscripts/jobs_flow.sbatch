@@ -28,7 +28,6 @@ commands=(
     --NAME flow_OTBC_cond4    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
-    --NUM_COND_INPUTS 4      \
     --BASIS rphi       \
     --OVERSAMPLE 2 "
 
@@ -44,7 +43,6 @@ commands=(
     --NAME flow_OTEC_cond4    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
-    --NUM_COND_INPUTS 4      \
     --BASIS rphi       \
     --OVERSAMPLE 2 "
 
@@ -59,7 +57,6 @@ commands=(
     --NAME flow_ITBC_cond4    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
-    --NUM_COND_INPUTS 4      \
     --BASIS rphi       \
     --OVERSAMPLE 2 "
 
@@ -75,7 +72,6 @@ commands=(
     --NAME flow_ITEC_cond4    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
-    --NUM_COND_INPUTS 4      \
     --BASIS rphi       \
     --OVERSAMPLE 2 "
 
@@ -90,7 +86,6 @@ commands=(
     --NAME flow_VBC_cond4    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
-    --NUM_COND_INPUTS 4      \
     --BASIS rphi       \
     --OVERSAMPLE 2 "
 
@@ -105,7 +100,6 @@ commands=(
     --NAME flow_VEC_cond4    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
-    --NUM_COND_INPUTS 4      \
     --BASIS rphi       \
     --OVERSAMPLE 2 "
 

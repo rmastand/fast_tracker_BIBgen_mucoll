@@ -28,7 +28,6 @@ commands=(
     --NAME flow_OTBC_cond4_local    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
-    --NUM_COND_INPUTS 4      \
     --BASIS local_phi       \
     --OVERSAMPLE 2 "
 
@@ -44,7 +43,6 @@ commands=(
     --NAME flow_OTEC_cond4_local    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
-    --NUM_COND_INPUTS 4      \
     --BASIS local_phi       \
     --OVERSAMPLE 2 "
 
@@ -60,7 +58,6 @@ commands=(
     --NAME flow_ITBC_cond4_local    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
-    --NUM_COND_INPUTS 4      \
     --BASIS local_phi       \
     --OVERSAMPLE 2 "
 
@@ -76,7 +73,6 @@ commands=(
     --NAME flow_ITEC_cond4_local    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
-    --NUM_COND_INPUTS 4      \
     --BASIS local_phi       \
     --OVERSAMPLE 2 "
 
@@ -92,7 +88,6 @@ commands=(
     --NAME flow_VBC_cond4_local    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
-    --NUM_COND_INPUTS 4      \
     --BASIS local_phi       \
     --OVERSAMPLE 2 "
 
@@ -108,7 +103,6 @@ commands=(
     --NAME flow_VEC_cond4_local    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
-    --NUM_COND_INPUTS 4      \
     --BASIS local_phi       \
     --OVERSAMPLE 2 "
 
