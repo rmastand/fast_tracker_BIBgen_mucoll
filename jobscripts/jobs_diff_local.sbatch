@@ -1,11 +1,13 @@
 #!/bin/bash
 #SBATCH --account=pi-rmastand    # <-- change to an allowed account
-#SBATCH --job-name=muc_local
+#SBATCH --job-name=muc
 #SBATCH --partition=gpu    # <-- change to an allowed partition
 #SBATCH --gres=gpu:1
-#SBATCH --nodelist=midway3-0286
-#SBATCH --time=20:0:00
-#SBATCH --array=0-5
+#SBATCH --nodes=1
+#SBATCH --constraint=rtx6000
+#SBATCH --time=36:00:00
+#SBATCH --mem=32G
+#SBATCH --array=0
 
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=rmastand@rcc.uchicago.edu  # Where to send email

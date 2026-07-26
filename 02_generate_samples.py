@@ -80,7 +80,7 @@ parser.add_argument("--PLOT_EPOCH_INTERVAL", type=int, default=50, help="Interva
 parser.add_argument("--STEPS", type=int, default=300000, help="Number of TabDDPM training steps")
 parser.add_argument("--WEIGHT_DECAY", type=float, default=0.0, help="TabDDPM optimizer weight decay")
 parser.add_argument("--NUM_TIMESTEPS", type=int, default=1000, help="Number of diffusion timesteps")
-parser.add_argument("--SAMPLE_BATCH_SIZE", type=int, default=4096, help="TabDDPM sampling batch size")
+parser.add_argument("--SAMPLE_BATCH_SIZE", type=int, default=4096*4, help="TabDDPM sampling batch size")
 parser.add_argument("--SCHEDULER", type=str, default="cosine", help="Diffusion noise scheduler")
 parser.add_argument("--D_LAYERS", type=str, default="4096,4096,4096,4096,4096,4096", help="TabDDPM MLP hidden layers")
 parser.add_argument("--DIM_T", type=int, default=2048, help="Diffusion timestep embedding dimension")
@@ -458,6 +458,7 @@ if args.EVAL:
             condition_generated = y_lookup[y_generated]
             samples = np.concatenate([X_generated, condition_generated], axis=1)
 
+
    
 
 
@@ -468,9 +469,9 @@ if args.EVAL:
         flow.eval()
 
         num_samples_total = len(sample_indices)
-        sample_batch_size = 8192 * 2
+        sample_batch_size = 4096
 
-        samples = []
+        samples = np.empty((num_samples_total, X.shape[1]), dtype=np.float32)
         with torch.no_grad():
             for i in tqdm(range(0, num_samples_total, sample_batch_size)):
                 nn = min(sample_batch_size, num_samples_total - i)
@@ -484,8 +485,7 @@ if args.EVAL:
 
                 n_samples = 1 if context_to_sample is not None else nn
                 loc_samples = sample_from_flow(flow, N=n_samples, x_context=context_to_sample)
-                samples.append(loc_samples)
-        samples = np.concatenate(samples)
+                samples[i:i+nn] = loc_samples
         samples = inverse_preprocess_data(samples, save_dir,  args.ZUKO_ID,  args.NUM_COND_INPUTS)
 
 
@@ -494,7 +494,9 @@ if args.EVAL:
     samples_global = inverse_geometry_transform(samples, args.BASIS, collection_list[0], FEATURE_ORDER)
     np.save(Path(save_dir) / "generated_samples.npy", samples_global)
         
+    print("     Done making samples. Made samples with shape:", samples_global.shape)
 
+    print("     Making plots...")
 
     fig_samp, axes_samp = plot_corner_hist_2d(samples, feature_labels=feature_labels, bins_dict=bins_dict, log_dims=log_vars, title= f"generated_{args.BASIS}",)
     plt.savefig(f"{plots_dir}/corner_generated_{args.BASIS}_final")
@@ -503,6 +505,8 @@ if args.EVAL:
     fig_samp, axes_samp = plot_corner_hist_2d(samples_global, feature_labels=global_feature_labels, bins_dict=bins_dict, log_dims=log_vars, title= f"generated_global",)
     plt.savefig(f"{plots_dir}/corner_generated_global_final")
     plt.close()
+
+    print("     Done making plots.")
             
     print("     Comparing samples to target...")
     results_dir = evaluate_samples(samples, samples_global, args.BASIS, X, X_global, feature_labels, global_feature_labels, save_dir, NUM_BINS, args.NUM_BDTS, args.BDT_SUBSAMPLE_FRAC, device, log_vars)

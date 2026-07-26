@@ -5,8 +5,9 @@
 #SBATCH --gres=gpu:1
 #SBATCH --nodes=1
 #SBATCH --constraint=rtx6000
-#SBATCH --time=20:00:00
-#SBATCH --array=0,1
+#SBATCH --time=36:00:00
+#SBATCH --mem=32G
+#SBATCH --array=0
 
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=rmastand@rcc.uchicago.edu  # Where to send email
@@ -23,7 +24,6 @@ commands=(
   "python -u 02_generate_samples.py \
     --MODEL tabddpm  \
     --COLLECTION_LIST OuterTrackerBarrelCollection   \
-    --TRAIN  \
     --EVAL  \
     --BATCH_SIZE 4096        \
     --LEARNING_RATE 0.0005        \
