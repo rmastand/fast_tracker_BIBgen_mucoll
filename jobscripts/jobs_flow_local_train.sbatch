@@ -3,11 +3,11 @@
 #SBATCH --job-name=muc
 #SBATCH --partition=gpu    # <-- change to an allowed partition
 #SBATCH --gres=gpu:1
-#SBATCH --constraint=rtx6000
 #SBATCH --nodes=1
+#SBATCH --constraint=rtx6000
 #SBATCH --time=36:00:00
-#SBATCH --mem=32G
 #SBATCH --array=0
+
 
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=rmastand@rcc.uchicago.edu  # Where to send email
@@ -24,7 +24,7 @@ commands=(
     --HIDDEN_FEATURES 128,128,128     \
     --BINS 48           \
     --COLLECTION_LIST OuterTrackerBarrelCollection     \
-    --EVAL       \
+    --TRAIN  \
     --NAME flow_OTBC_cond4_local    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
@@ -39,7 +39,6 @@ commands=(
     --BINS 48           \
     --COLLECTION_LIST OuterTrackerEndcapCollection     \
     --TRAIN  \
-    --EVAL       \
     --NAME flow_OTEC_cond4_local    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
@@ -54,7 +53,6 @@ commands=(
     --BINS 48           \
     --COLLECTION_LIST InnerTrackerBarrelCollection     \
     --TRAIN  \
-    --EVAL       \
     --NAME flow_ITBC_cond4_local    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
@@ -69,7 +67,6 @@ commands=(
     --BINS 48           \
     --COLLECTION_LIST InnerTrackerEndcapCollection     \
     --TRAIN  \
-    --EVAL       \
     --NAME flow_ITEC_cond4_local    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
@@ -84,7 +81,6 @@ commands=(
     --BINS 48           \
     --COLLECTION_LIST VertexBarrelCollection     \
     --TRAIN  \
-    --EVAL       \
     --NAME flow_VBC_cond4_local    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
@@ -99,7 +95,6 @@ commands=(
     --BINS 48           \
     --COLLECTION_LIST VertexEndcapCollection     \
     --TRAIN  \
-    --EVAL       \
     --NAME flow_VEC_cond4_local    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \

@@ -6,8 +6,8 @@
 #SBATCH --nodes=1
 #SBATCH --constraint=rtx6000
 #SBATCH --time=36:00:00
-#SBATCH --mem=32G
-#SBATCH --array=5
+#SBATCH --mem=8G
+#SBATCH --array=0
 
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=rmastand@rcc.uchicago.edu  # Where to send email
@@ -17,8 +17,7 @@ conda activate /scratch/midway3/rmastand/muon_collider_env
 cd /home/rmastand/muon_collider
 
 commands=(
-
-
+  
 
 
   "python -u 02_generate_samples.py \
@@ -27,8 +26,8 @@ commands=(
     --EVAL  \
     --BATCH_SIZE 4096        \
     --LEARNING_RATE 0.0005        \
-    --NAME diff_OTBC_cond4 \
-    --BASIS rphi   \
+    --NAME diff_OTBC_cond4_local \
+    --BASIS local_phi   \
     --OVERSAMPLE 1  "
 
   "python -u 02_generate_samples.py \
@@ -37,8 +36,8 @@ commands=(
     --EVAL  \
     --BATCH_SIZE 4096        \
     --LEARNING_RATE 0.0005        \
-    --NAME diff_OTEC_cond4 \
-    --BASIS rphi   \
+    --NAME diff_OTEC_cond4_local \
+    --BASIS local_phi   \
     --OVERSAMPLE 1  "
 
   "python -u 02_generate_samples.py \
@@ -47,8 +46,8 @@ commands=(
     --EVAL  \
     --BATCH_SIZE 4096        \
     --LEARNING_RATE 0.0005        \
-    --NAME diff_ITBC_cond4 \
-    --BASIS rphi   \
+    --NAME diff_ITBC_cond4_local \
+    --BASIS local_phi   \
     --OVERSAMPLE 1  "
 
   "python -u 02_generate_samples.py \
@@ -57,8 +56,8 @@ commands=(
     --EVAL  \
     --BATCH_SIZE 4096        \
     --LEARNING_RATE 0.0005        \
-    --NAME diff_ITEC_cond4 \
-    --BASIS rphi   \
+    --NAME diff_ITEC_cond4_local \
+    --BASIS local_phi   \
     --OVERSAMPLE 1  "
 
   "python -u 02_generate_samples.py \
@@ -67,8 +66,8 @@ commands=(
     --EVAL  \
     --BATCH_SIZE 4096        \
     --LEARNING_RATE 0.0005        \
-    --NAME diff_VBC_cond4 \
-    --BASIS rphi   \
+    --NAME diff_VBC_cond4_local \
+    --BASIS local_phi   \
     --OVERSAMPLE 1  "
 
   "python -u 02_generate_samples.py \
@@ -77,8 +76,8 @@ commands=(
     --EVAL  \
     --BATCH_SIZE 4096        \
     --LEARNING_RATE 0.0005        \
-    --NAME diff_VEC_cond4 \
-    --BASIS rphi   \
+    --NAME diff_VEC_cond4_local \
+    --BASIS local_phi   \
     --OVERSAMPLE 1  "
 
   )

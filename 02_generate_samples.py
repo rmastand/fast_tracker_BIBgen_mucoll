@@ -21,7 +21,8 @@ from helpers.data_transforms import (
     pack_condition_rows
 )
 from helpers.evaluation import evaluate_samples
-from helpers.flow import run_training_step, sample_from_flow
+from helpers.flow import run_training_step, sample_from_flow, build_xy_z_lookup, snap_z_to_detector_xy
+from helpers.material_map import apply_material_map_hybrid
 plt.style.use("../science.mplstyle")
 
 # %%
@@ -35,31 +36,25 @@ for path in (str(TABDDPM_ROOT), str(TABDDPM_SCRIPTS)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-with open("configs.yaml", "r") as f:
-    configs = yaml.safe_load(f)
-
-BIN_BOUND = configs["BIN_BOUND"]
-NUM_BINS = configs["NUM_BINS"]
-FEATURE_ORDER = configs["FEATURE_ORDER"]
-SAVE_DIR = configs["PATH_TO_OUTPUT_DIR"]
-WANDB_DIR = configs["PATH_TO_WANDB_DIR"]
-NUM_COND_INPUTS = configs["NUM_COND_INPUTS"]
-
 # setup
 parser = argparse.ArgumentParser()
 parser.add_argument("--MODEL", choices=["flow", "tabddpm"],default="flow", help="Generative_model")
 parser.add_argument("--ZUKO_ID", type=str, default="NCSF", help="Zuko model ID")
 parser.add_argument("--NAME", type=str, default="", help="Name")
 parser.add_argument("--OVERSAMPLE", default=1, type=int, help="Number of generated samples per reference row")
+parser.add_argument("--CONFIG_PATH", default="configs", type=str, help="Path to the configuration file")
+
+
+
 # data + evaluation
 parser.add_argument("--COLLECTION_LIST", type=str, default="OuterTrackerBarrelCollection")
 parser.add_argument("--BASIS", choices=["xy", "rphi", "local_phi"], default="rphi", help="Coordinate basis used for training")
 parser.add_argument("--TRAIN", action="store_true", help="Whether to train the flow")
 parser.add_argument("--EVAL", action="store_true", help="Whether to evaluate the flow after training")
-parser.add_argument("--NUM_BDTS", type=int, default=3, help="For sample evaluation")
+parser.add_argument("--NUM_BDTS", type=int, default=1, help="For sample evaluation")
 parser.add_argument("--BDT_SUBSAMPLE_FRAC", type=float, default=1.0, help="Evaluation subsample fraction")
 parser.add_argument("--SEED", type=int, default=8, help="Random seed") 
-parser.add_argument("--TRAINING_FRAC", type=float, default=1.0, help="How much training data to use")
+parser.add_argument("--TRAINING_FRAC", type=float, default=1, help="How much training data to use")
 
 
 # flow-specific arguments
@@ -88,6 +83,22 @@ parser.add_argument("--NORMALIZATION", type=str, default="quantile", help="TabDD
 parser.add_argument("--Y_MODE", choices=["cond", "joint", "none"], default="cond", help="TabDDPM conditioning mode")
 
 args = parser.parse_args()
+
+
+
+
+
+with open(f"{args.CONFIG_PATH}.yaml", "r") as f:
+    configs = yaml.safe_load(f)
+
+BIN_BOUND = configs["BIN_BOUND"]
+NUM_BINS = configs["NUM_BINS"]
+FEATURE_ORDER = configs["FEATURE_ORDER"]
+SAVE_DIR = configs["PATH_TO_OUTPUT_DIR"]
+WANDB_DIR = configs["PATH_TO_WANDB_DIR"]
+NUM_COND_INPUTS = configs["NUM_COND_INPUTS"]
+FEATURE_INDICES_DICT = configs["FEATURE_INDICES_DICT"]
+
 
 
 # %%
@@ -136,6 +147,7 @@ log_vars = []
 # %%
 
 X, feature_labels = load_in_data(collection_list, args.BASIS, configs["PATH_TO_DATA_DIR"], args.TRAINING_FRAC, NUM_COND_INPUTS, feature_order=FEATURE_ORDER)
+
 
 # Keep a global reference for evaluating the final global samples
 X_global = inverse_geometry_transform(X, args.BASIS, collection_list[0], FEATURE_ORDER)
@@ -443,13 +455,30 @@ if args.EVAL:
     sample_indices = np.tile(np.arange(len(X)), args.OVERSAMPLE)
 
     if args.MODEL == "tabddpm":
-        # Sample conditions from the full train and validation context distribution.
 
-        tabddpm_sample(
+        col_name = collection_list[0]
+        is_endcap = "Endcap" in col_name
+
+        # Build z-snapping KDTree lookup from real data (only needed for endcap collections)
+        if is_endcap:
+            z_lookup = build_xy_z_lookup(
+                X_global,
+                FEATURE_INDICES_DICT["side"],
+                FEATURE_INDICES_DICT["layer"],
+                FEATURE_INDICES_DICT["r"],
+                FEATURE_INDICES_DICT["phi"],
+                FEATURE_INDICES_DICT["z"],
+            )
+
+        num_samples_total = len(sample_indices)
+        # y condition (class label encoding the conditioning variables) per output slot
+        y_per_slot = y_values[sample_indices] if args.Y_MODE == "cond" else None
+
+        # kwargs shared across all tabddpm_sample calls in the rejection loop
+        tabddpm_kwargs = dict(
             parent_dir=str(save_dir),
             real_data_path=str(dataset_dir),
             batch_size=args.SAMPLE_BATCH_SIZE,
-            num_samples=int(len(X_values) * args.OVERSAMPLE),
             model_type="mlp",
             model_params=model_params,
             model_path=str(Path(save_dir) / "model.pt"),
@@ -460,22 +489,76 @@ if args.EVAL:
             num_numerical_features=X_values.shape[1],
             disbalance=None,
             device=device,
-            seed=sample_seed,
             change_val=False,
-            y_to_sample=y_values[sample_indices] if args.Y_MODE == "cond" else None,
         )
 
+        # output_samples[i] holds one mask-passing sample for the context of X[sample_indices[i]]
+        output_samples = np.empty((num_samples_total, X.shape[1]), dtype=np.float32)
+        # unfilled[i] is True until slot i receives a mask-passing sample
+        unfilled = np.ones(num_samples_total, dtype=bool)
 
-        X_generated = np.load(Path(save_dir) / "X_num_train.npy").astype(np.float32)
-        y_generated = np.load(Path(save_dir) / "y_train.npy").astype(np.int64)
+        max_rounds = 20
+        for rnd in range(max_rounds):
+            remaining = np.where(unfilled)[0]
+            if len(remaining) == 0:
+                break
 
+            n_rem = len(remaining)
+            print(f"     Round {rnd+1}: {n_rem}/{num_samples_total} tabddpm slots remaining.", flush=True)
 
+            # Generate one sample per remaining slot using the exact y condition for that slot.
+            # tabddpm_sample overwrites X_num_train.npy / y_train.npy each call; reload after.
+            tabddpm_sample(
+                **tabddpm_kwargs,
+                num_samples=n_rem,
+                seed=sample_seed + rnd,
+                y_to_sample=y_per_slot[remaining] if args.Y_MODE == "cond" else None,
+            )
 
-        if args.Y_MODE == "none":
-            samples = X_generated
-        else:
-            condition_generated = y_lookup[y_generated]
-            samples = np.concatenate([X_generated, condition_generated], axis=1)
+            X_gen = np.load(Path(save_dir) / "X_num_train.npy").astype(np.float32)
+            y_gen = np.load(Path(save_dir) / "y_train.npy").astype(np.int64)
+
+            if args.Y_MODE == "none":
+                loc_samples = X_gen
+            else:
+                # y_lookup maps class label -> original conditioning values (side, layer, module, sensor)
+                cond_gen = y_lookup[y_gen]
+                loc_samples = np.concatenate([X_gen, cond_gen], axis=1)
+
+            # Undo geometry transform (no-op for rphi; local->global phi for local_phi)
+            loc_samples = inverse_geometry_transform(loc_samples, args.BASIS, col_name, FEATURE_ORDER)
+
+            # Snap z to nearest real detector hit for endcap collections
+            if is_endcap:
+                loc_samples[:, FEATURE_INDICES_DICT["z"]] = snap_z_to_detector_xy(
+                    loc_samples[:, FEATURE_INDICES_DICT["r"]],
+                    loc_samples[:, FEATURE_INDICES_DICT["phi"]],
+                    loc_samples[:, FEATURE_INDICES_DICT["side"]],
+                    loc_samples[:, FEATURE_INDICES_DICT["layer"]],
+                    z_lookup,
+                )
+
+            # Apply material map: keep only samples that land on detector material
+            mask = apply_material_map_hybrid(
+                {col_name: loc_samples}, None, col_name, FEATURE_INDICES_DICT
+            )
+
+            passing = np.where(mask)[0]
+            output_samples[remaining[passing]] = loc_samples[passing]
+            unfilled[remaining[passing]] = False
+            print(f"       Filled {len(passing)} new samples this round.", flush=True)
+
+        if np.any(unfilled):
+            # Save the X context rows that never converged for external inspection / retry
+            unfilled_ctx_path = samples_out_path.parent / (samples_out_path.stem + "_unfilled_contexts.npy")
+            np.save(unfilled_ctx_path, X[sample_indices[np.where(unfilled)[0]]])
+            print(f"WARNING: {unfilled.sum()} tabddpm slots still unfilled after {max_rounds} rounds. "
+                  f"Unfilled contexts saved to {unfilled_ctx_path.name}. "
+                  "Saving only the filled samples.", flush=True)
+
+        # samples is in global physical space (inverse_geometry applied inside the loop above);
+        # trimmed to only the slots that were successfully filled
+        samples = output_samples[~unfilled]
 
 
    
@@ -487,32 +570,101 @@ if args.EVAL:
         flow.load_state_dict(ckpt["model_state_dict"])
         flow.eval()
 
+        col_name = collection_list[0]
+        is_endcap = "Endcap" in col_name
+
+        # Build z-snapping KDTree lookup from real data (only needed for endcap collections)
+        if is_endcap:
+            z_lookup = build_xy_z_lookup(
+                X_global,
+                FEATURE_INDICES_DICT["side"],
+                FEATURE_INDICES_DICT["layer"],
+                FEATURE_INDICES_DICT["r"],
+                FEATURE_INDICES_DICT["phi"],
+                FEATURE_INDICES_DICT["z"],
+            )
+
         num_samples_total = len(sample_indices)
         sample_batch_size = 4096
 
-        samples = np.empty((num_samples_total, X.shape[1]), dtype=np.float32)
+        # output_samples[i] holds one mask-passing sample for the context of X[sample_indices[i]]
+        output_samples = np.empty((num_samples_total, X.shape[1]), dtype=np.float32)
+        # unfilled[i] is True until slot i receives a mask-passing sample
+        unfilled = np.ones(num_samples_total, dtype=bool)
+
+        max_rounds = 50
         with torch.no_grad():
-            for i in tqdm(range(0, num_samples_total, sample_batch_size)):
-                nn = min(sample_batch_size, num_samples_total - i)
+            for rnd in range(max_rounds):
+                remaining = np.where(unfilled)[0]
+                if len(remaining) == 0:
+                    break
 
-                if NUM_COND_INPUTS > 0:
-                    context_to_sample = torch.tensor(
-                        X[sample_indices[i:i+nn], -NUM_COND_INPUTS:], dtype=torch.float32
-                    ).to(device)
-                else:
-                    context_to_sample = None
+                print(f"     Round {rnd+1}: {len(remaining)}/{num_samples_total} flow slots remaining.", flush=True)
+                n_filled_this_round = 0
 
-                n_samples = 1 if context_to_sample is not None else nn
-                loc_samples = sample_from_flow(flow, N=n_samples, x_context=context_to_sample)
-                samples[i:i+nn] = loc_samples
-        samples = inverse_preprocess_data(samples, save_dir,  args.ZUKO_ID,  NUM_COND_INPUTS)
+                for i in tqdm(range(0, len(remaining), sample_batch_size), desc=f"       Sampling round {rnd+1}"):
+                    batch_out_idx = remaining[i:i+sample_batch_size]
+                    nn = len(batch_out_idx)
+
+                    # Use the exact conditioning variables from X for each output slot
+                    if NUM_COND_INPUTS > 0:
+                        context_to_sample = torch.tensor(
+                            X[sample_indices[batch_out_idx], -NUM_COND_INPUTS:], dtype=torch.float32
+                        ).to(device)
+                    else:
+                        context_to_sample = None
+
+                    n_samples = 1 if context_to_sample is not None else nn
+                    loc_samples = sample_from_flow(flow, N=n_samples, x_context=context_to_sample)
+
+                    # Undo preprocessing (scaler applied to feature columns only; context unchanged)
+                    loc_samples = inverse_preprocess_data(loc_samples, save_dir, args.ZUKO_ID, NUM_COND_INPUTS)
+                    # Undo geometry transform (no-op for rphi; local->global phi for local_phi)
+                    loc_samples = inverse_geometry_transform(loc_samples, args.BASIS, col_name, FEATURE_ORDER)
+
+                    # Snap z to nearest real detector hit for endcap collections
+                    if is_endcap:
+                        loc_samples[:, FEATURE_INDICES_DICT["z"]] = snap_z_to_detector_xy(
+                            loc_samples[:, FEATURE_INDICES_DICT["r"]],
+                            loc_samples[:, FEATURE_INDICES_DICT["phi"]],
+                            loc_samples[:, FEATURE_INDICES_DICT["side"]],
+                            loc_samples[:, FEATURE_INDICES_DICT["layer"]],
+                            z_lookup,
+                        )
+
+                    # Apply material map: keep only samples that land on detector material
+                    mask = apply_material_map_hybrid(
+                        {col_name: loc_samples}, None, col_name, FEATURE_INDICES_DICT
+                    )
+
+                    # Store passing samples into the output array
+                    passing = np.where(mask)[0]
+                    output_samples[batch_out_idx[passing]] = loc_samples[passing]
+                    unfilled[batch_out_idx[passing]] = False
+                    n_filled_this_round += len(passing)
+
+                print(f"       Filled {n_filled_this_round} new samples this round.", flush=True)
+
+        if np.any(unfilled):
+            # Save the X context rows that never converged for external inspection / retry
+            unfilled_ctx_path = samples_out_path.parent / (samples_out_path.stem + "_unfilled_contexts.npy")
+            np.save(unfilled_ctx_path, X[sample_indices[np.where(unfilled)[0]]])
+            print(f"WARNING: {unfilled.sum()} flow slots still unfilled after {max_rounds} rounds. "
+                  f"Unfilled contexts saved to {unfilled_ctx_path.name}. "
+                  "Saving only the filled samples.", flush=True)
+
+        # samples is in global physical space (inverse_preprocess + inverse_geometry applied above);
+        # trimmed to only the slots that were successfully filled
+        samples = output_samples[~unfilled]
 
 
 
 
-    samples_global = inverse_geometry_transform(samples, args.BASIS, collection_list[0], FEATURE_ORDER)
+    # Both model branches now apply inverse_preprocess + inverse_geometry_transform inline
+    # (inside the rejection-sampling loops above), so samples is already in global physical space.
+    samples_global = samples
     np.save(samples_out_path, samples_global)
-        
+
     print("     Done making samples. Made samples with shape:", samples_global.shape)
 
     print("     Making plots...")
@@ -527,10 +679,10 @@ if args.EVAL:
 
     print("     Done making plots.")
             
-    print("     Comparing samples to target...")
-    results_dir = evaluate_samples(samples, samples_global, args.BASIS, X, X_global, feature_labels, global_feature_labels, save_dir, NUM_BINS, args.NUM_BDTS, args.BDT_SUBSAMPLE_FRAC, device, log_vars)
-    wandb.log(results_dir)
-    print(results_dir)
+    # print("     Comparing samples to target...")
+    # results_dir = evaluate_samples(samples, samples_global, args.BASIS, X, X_global, feature_labels, global_feature_labels, save_dir, NUM_BINS, args.NUM_BDTS, args.BDT_SUBSAMPLE_FRAC, device, log_vars)
+    # wandb.log(results_dir)
+    # print(results_dir)
 
 
 

@@ -74,6 +74,27 @@ if args.MODEL == "flow":
             "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTBC_cond4_local/",
                             }
 
+elif args.MODEL == "tabddpm":
+
+    if args.BASIS == "rphi":
+        PATHS_TO_SAMPLES = {
+            "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_OTBC_cond4/",
+            "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_OTEC_cond4/",
+            "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_ITBC_cond4/",
+            "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_ITEC_cond4/",
+            "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_VBC_cond4/",
+            "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_VEC_cond4/",
+                            }
+    elif args.BASIS == "local_phi":
+        PATHS_TO_SAMPLES = {
+            "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/tabddpm_OTBC_cond4_local/",
+            "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/tabddpm_OTBC_cond4_local/",
+            "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/tabddpm_OTBC_cond4_local/",
+            "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/tabddpm_OTBC_cond4_local/",
+            "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/tabddpm_OTBC_cond4_local/",
+            "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/tabddpm_OTBC_cond4_local/",
+                            }
+
 print("Loading in data and samples...", flush=True)
 all_data_dir, all_samples_dir = {}, {}
 bins_dict = {}
@@ -81,7 +102,7 @@ feature_labels_dict = {}
 
 for col_name in ALL_COLLECTIONS:
 
-    X, feature_labels = load_in_data([col_name], args.BASIS, PATH_TO_DATA_DIR, 1, NUM_COND_INPUTS, FEATURE_ORDER)
+    X, feature_labels = load_in_data([col_name], "rphi", PATH_TO_DATA_DIR, 1, NUM_COND_INPUTS, FEATURE_ORDER)
     
     all_data_dir[col_name] = X
 
@@ -180,7 +201,7 @@ if not args.NO_SNAP_Z:
 # make the flow samples evaluation
 print()
 print("Building masked datasets...", flush=True)
-flow_samples_masked, flow_samples_masked_stratified = build_masked_datasets(all_data_dir, all_samples_dir, ALL_COLLECTIONS, NUM_COND_INPUTS, FEATURE_INDICES_DICT, stratify = False)
+flow_samples_masked, flow_samples_masked_stratified = build_masked_datasets(all_data_dir, all_samples_dir, ALL_COLLECTIONS, NUM_COND_INPUTS, FEATURE_INDICES_DICT, stratify = True)
 
 
 
@@ -191,6 +212,7 @@ for i, col_name in enumerate(ALL_COLLECTIONS):
         "Sim BIB": all_data_dir[col_name],
         "ML BIB (unmasked)": all_samples_dir[col_name],
         "ML BIB (masked)": flow_samples_masked[col_name],
+        "ML BIB (masked stratified)": flow_samples_masked_stratified[col_name],
     }, bins_dict[col_name], log_dims=log_vars, labels=feature_labels)
     plt.savefig(f"{args.PLOTS_DIR}/{col_name}_1d_histograms.png")
     plt.close()
@@ -215,12 +237,12 @@ for i, col_name in enumerate(ALL_COLLECTIONS):
             flow_samples_masked[col_name][:, FEATURE_INDICES_DICT["r"]] *
             np.sin(flow_samples_masked[col_name][:, FEATURE_INDICES_DICT["phi"]])
         ),
-        # "masked stratified samples": (
-        #     flow_samples_masked_stratified[col_name][:, feature_indices_dict[col_name]["r"]] *
-        #     np.cos(flow_samples_masked_stratified[col_name][:, feature_indices_dict[col_name]["phi"]]),
-        #     flow_samples_masked_stratified[col_name][:, feature_indices_dict[col_name]["r"]] *
-        #     np.sin(flow_samples_masked_stratified[col_name][:, feature_indices_dict[col_name]["phi"]])
-        # )
+        "ML BIB (masked stratified)": (
+            flow_samples_masked_stratified[col_name][:, FEATURE_INDICES_DICT["r"]] *
+            np.cos(flow_samples_masked_stratified[col_name][:, FEATURE_INDICES_DICT["phi"]]),
+            flow_samples_masked_stratified[col_name][:, FEATURE_INDICES_DICT["r"]] *
+            np.sin(flow_samples_masked_stratified[col_name][:, FEATURE_INDICES_DICT["phi"]])
+        ),
     }
 
     make_2d_plots(loc_array, ["$x$ [mm]", "$y$ [mm]"], col_name)
@@ -374,7 +396,7 @@ if args.SAVE_OUT_SAMPLES:
 
         loc_subset = flow_samples_masked[col][idx]
 
-        print("flow samples", loc_subset.shape)
+        print(f"flow samples have shape {loc_subset.shape} ({100*loc_subset.shape[0]/n_samples}% of target)")
         np.save(f"{PATH_TO_SAVE_SAMPLES}/{col}.npy", loc_subset)
 
         #print(loc.shape,)

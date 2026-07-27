@@ -368,132 +368,89 @@ def apply_material_map_hybrid(samples_dir, material_map, col_name, feature_indic
 
 
 
-def build_masked_datasets(data_dir, samples_dir, collections, NUM_COND_INPUTS, feature_indices_dict, stratify=True):
+def _cap_1d(samples, reference, feature_idx, n_bins, tolerance):
+    """Cap over-represented bins in one feature dimension. Returns kept indices."""
+    ref_vals  = reference[:, feature_idx]
+    samp_vals = samples[:,   feature_idx]
 
-    source_conditions = []
-    masked_flow_conditions = []
-    masked_indices_per_collection = []
-    masked_collection_ids = []
+    edges = np.linspace(ref_vals.min(), ref_vals.max(), n_bins + 1)
+
+    counts_ref,  _ = np.histogram(ref_vals,  bins=edges)
+    counts_samp, _ = np.histogram(samp_vals, bins=edges)
+
+    frac_ref  = counts_ref  / counts_ref.sum()
+    frac_samp = counts_samp / (counts_samp.sum() or 1)
+
+    target = np.where(
+        frac_samp > tolerance * frac_ref,
+        np.floor(tolerance * frac_ref * len(samp_vals)).astype(int),
+        counts_samp,
+    )
+
+    bin_ids = np.clip(np.digitize(samp_vals, edges) - 1, 0, n_bins - 1)
+
+    chosen = []
+    for b in np.unique(bin_ids):
+        inds = np.where(bin_ids == b)[0]
+        n_take = min(int(target[b]), len(inds))
+        if n_take > 0:
+            chosen.append(np.random.choice(inds, size=n_take, replace=False))
+
+    return np.concatenate(chosen) if chosen else np.array([], dtype=int)
+
+
+def cap_post_mask(masked_samples, reference_data, phi_idx, z_idx, n_bins=100, tolerance=1.05):
+    """
+    Clip the post-mask phi and z distributions to the reference by per-bin capping.
+
+    Applied sequentially: phi first, then z on the survivors.
+    Bins where frac_samp > tolerance * frac_ref are downsampled to
+    tolerance * frac_ref * N.  Bins within tolerance are kept in full.
+
+    Returns indices into masked_samples to keep.
+    """
+    # phi pass
+    keep_phi = _cap_1d(masked_samples, reference_data, phi_idx, n_bins, tolerance)
+    after_phi = masked_samples[keep_phi]
+
+    # z pass on survivors
+    keep_z_local = _cap_1d(after_phi, reference_data, z_idx, n_bins, tolerance)
+    keep_z = keep_phi[keep_z_local]
+
+    print(f"  cap_post_mask: {len(masked_samples)} -> {len(keep_phi)} (phi) -> {len(keep_z)} (z)  ({100*len(keep_z)/len(masked_samples):.1f}% kept)")
+    return keep_z
+
+
+def build_masked_datasets(data_dir, samples_dir, collections, NUM_COND_INPUTS, feature_indices_dict, stratify=True, n_bins=1000, tolerance=1.01):
 
     flow_samples_masked = {col_name: None for col_name in collections}
-
-
-    for i, col_name in enumerate(collections):
-    
-        mask = apply_material_map_hybrid(samples_dir, None, col_name, feature_indices_dict)
-        print(f"{col_name}: {100*sum(mask)/len(mask)}% of samples pass ({sum(mask)} after masking, {len(mask)} before masking)")
-        flow_samples_masked[col_name] = samples_dir[col_name][mask]
-    
-        masked_idx = np.where(mask)[0]
-        masked_indices_per_collection.append(masked_idx) # get the locations that passed the mask
-        masked_collection_ids.append(np.full(len(masked_idx), i, dtype=int)) # get the integer corresponding to that collection
-
-    
-        source_conditions.append(np.concatenate([
-            np.full((data_dir[col_name].shape[0], 1), i, dtype=int),
-            data_dir[col_name][:, -NUM_COND_INPUTS:]
-        ], axis=1))
-        masked_flow_conditions.append(np.concatenate([
-            np.full((samples_dir[col_name][mask].shape[0], 1), i, dtype=int),
-            samples_dir[col_name][mask][:, -NUM_COND_INPUTS:]
-        ], axis=1))
-
-
-    if not stratify:
-        return flow_samples_masked, None
-
-    # concatenate
-    source_conditions = np.concatenate(source_conditions, axis=0)
-    masked_flow_conditions = np.concatenate(masked_flow_conditions, axis=0)
-    masked_indices_global = np.concatenate(masked_indices_per_collection)
-    masked_collection_ids = np.concatenate(masked_collection_ids)
-
-
-    # concatenate all of the conditions
-    all_conditions = np.concatenate(
-        [source_conditions, masked_flow_conditions],
-        axis=0
-    )
-    
-    # Get global grouping
-    # unique_keys is the unique (system, side, layer, module, sensor) combinations
-    # inverse is the unique key index of that particular data point
-    # unique_keys[inverse] = all_conditions
-    unique_keys, inverse = np.unique(
-        all_conditions,
-        axis=0,
-        return_inverse=True
-    )
-
-    # Split inverse mapping back
-    n_source = len(source_conditions)
-    inv_source = inverse[:n_source]
-    inv_masked = inverse[n_source:]
-
-    # get occupancies of each (system, side, layer, module, sensor) combination
-    counts_source = np.bincount(inv_source, minlength=len(unique_keys)) # (num. cells, )
-    counts_masked = np.bincount(inv_masked, minlength=len(unique_keys)) # (num. cells, )
-
-        
-    valid = counts_masked > 0
-    ratios = counts_masked[valid] / counts_source[valid]
-    alpha = ratios.min()
-    print("alpha =", alpha)
-    
-    target_counts = np.floor(alpha * counts_source).astype(int)
-
-    order = np.argsort(inv_masked) # ( num. events, )
-    # sort all the samples by the group id. So now all the samples with the same group id are next to each other
-    sorted_groups = inv_masked[order] # ( num. events, )
-  
-    # chunk the samples with the same group id
-    split_points = np.flatnonzero(np.diff(sorted_groups)) + 1
-    grouped_indices = np.split(order, split_points)
-    group_ids = np.unique(inv_masked)
-    
-    # --- sample within each group ---
-    
-    chosen_indices = []
-    
-    for gid, inds in zip(group_ids, grouped_indices):
-        n_target = target_counts[gid]
-    
-        if n_target == 0:
-            continue
-    
-        if len(inds) < n_target:
-            n_target = len(inds)  # safety (shouldn't happen due to alpha)
-    
-        chosen = np.random.choice(inds, size=n_target, replace=False)
-        chosen_indices.append(chosen)
-    
-    chosen_indices = np.concatenate(chosen_indices)
-    
-    
-    # --- map back to original samples ---
-    
-    # masked_indices_global: indices into original per-collection arrays
-    # masked_collection_ids: which collection each masked sample came from
-    selected_masked_global_idx = masked_indices_global[chosen_indices]
-    selected_collection_ids = masked_collection_ids[chosen_indices]
-    
-    # --- build output dictionary with collection names ---
     flow_samples_masked_stratified = {col_name: None for col_name in collections}
-    
-    for i, col_name in enumerate(collections):
-    
-        mask_i = selected_collection_ids == i
-        local_indices = selected_masked_global_idx[mask_i]
-    
-        flow_samples_masked_stratified[col_name] = samples_dir[col_name][local_indices]
-    
-    
-    # --- optional: sanity check ---
-    
-    for col_name in collections:
-        print(col_name, flow_samples_masked[col_name].shape, flow_samples_masked_stratified[col_name].shape)
 
-    return flow_samples_masked, flow_samples_masked_stratified
+    for col_name in collections:
+        raw = samples_dir[col_name]
+
+        # unmodified mask (always computed)
+        mask_raw = apply_material_map_hybrid(samples_dir, None, col_name, feature_indices_dict)
+        frac = 100 * mask_raw.sum() / len(mask_raw)
+        print(f"{col_name}: {frac:.1f}% of raw samples pass mask ({mask_raw.sum()} after masking, {len(mask_raw)} before)")
+        flow_samples_masked[col_name] = raw[mask_raw]
+
+        if stratify:
+            print(f"  Capping phi and z distributions for {col_name} (post-mask)...")
+            keep_idx = cap_post_mask(
+                flow_samples_masked[col_name],
+                data_dir[col_name],
+                phi_idx=feature_indices_dict["phi"],
+                z_idx=feature_indices_dict["z"],
+                n_bins=n_bins,
+                tolerance=tolerance,
+            )
+            flow_samples_masked_stratified[col_name] = flow_samples_masked[col_name][keep_idx]
+            n_raw = len(raw)
+            n_final = len(flow_samples_masked_stratified[col_name])
+            print(f"  {col_name} surviving mask + cap: {n_final} / {n_raw} ({100*n_final/n_raw:.1f}%)")
+
+    return flow_samples_masked, flow_samples_masked_stratified if stratify else None
 
     
 

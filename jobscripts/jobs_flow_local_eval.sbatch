@@ -3,11 +3,11 @@
 #SBATCH --job-name=muc
 #SBATCH --partition=gpu    # <-- change to an allowed partition
 #SBATCH --gres=gpu:1
-#SBATCH --constraint=rtx6000
 #SBATCH --nodes=1
-#SBATCH --mem=32G
+#SBATCH --constraint=rtx6000
 #SBATCH --time=36:00:00
-#SBATCH --array=0-5
+#SBATCH --mem=8G
+#SBATCH --array=0
 
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=rmastand@rcc.uchicago.edu  # Where to send email
@@ -26,10 +26,10 @@ commands=(
     --COLLECTION_LIST OuterTrackerBarrelCollection     \
     --TRAIN  \
     --EVAL       \
-    --NAME flow_OTBC_cond2    \
+    --NAME flow_OTBC_cond2_local    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
-    --BASIS rphi       \
+    --BASIS local_phi       \
     --CONFIG_PATH configs_2 \
     --OVERSAMPLE 2 "
 
@@ -42,11 +42,10 @@ commands=(
     --COLLECTION_LIST OuterTrackerEndcapCollection     \
     --TRAIN  \
     --EVAL       \
-    --NAME flow_OTEC_cond2    \
+    --NAME flow_OTEC_cond4_local    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
-    --BASIS rphi       \
-    --CONFIG_PATH configs_2 \
+    --BASIS local_phi       \
     --OVERSAMPLE 2 "
 
   "python 02_generate_samples.py  \
@@ -58,11 +57,10 @@ commands=(
     --COLLECTION_LIST InnerTrackerBarrelCollection     \
     --TRAIN  \
     --EVAL       \
-    --NAME flow_ITBC_cond2    \
+    --NAME flow_ITBC_cond4_local    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
-    --BASIS rphi       \
-    --CONFIG_PATH configs_2 \
+    --BASIS local_phi       \
     --OVERSAMPLE 2 "
 
   "python 02_generate_samples.py  \
@@ -74,11 +72,10 @@ commands=(
     --COLLECTION_LIST InnerTrackerEndcapCollection     \
     --TRAIN  \
     --EVAL       \
-    --NAME flow_ITEC_cond2    \
+    --NAME flow_ITEC_cond4_local    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
-    --BASIS rphi       \
-    --CONFIG_PATH configs_2 \
+    --BASIS local_phi       \
     --OVERSAMPLE 2 "
 
   "python 02_generate_samples.py  \
@@ -90,11 +87,10 @@ commands=(
     --COLLECTION_LIST VertexBarrelCollection     \
     --TRAIN  \
     --EVAL       \
-    --NAME flow_VBC_cond2    \
+    --NAME flow_VBC_cond4_local    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
-    --BASIS rphi       \
-    --CONFIG_PATH configs_2 \
+    --BASIS local_phi       \
     --OVERSAMPLE 2 "
 
   "python 02_generate_samples.py  \
@@ -106,13 +102,11 @@ commands=(
     --COLLECTION_LIST VertexEndcapCollection     \
     --TRAIN  \
     --EVAL       \
-    --NAME flow_VEC_cond2    \
+    --NAME flow_VEC_cond4_local    \
     --BATCH_SIZE 2048        \
     --LEARNING_RATE 0.0001        \
-    --BASIS rphi       \
-    --CONFIG_PATH configs_2 \
+    --BASIS local_phi       \
     --OVERSAMPLE 2 "
-
 
 
 

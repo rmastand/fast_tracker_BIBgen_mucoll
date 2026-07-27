@@ -6,7 +6,6 @@
 #SBATCH --nodes=1
 #SBATCH --constraint=rtx6000
 #SBATCH --time=36:00:00
-#SBATCH --mem=32G
 #SBATCH --array=0
 
 #SBATCH --mail-type=ALL
@@ -24,7 +23,6 @@ commands=(
     --MODEL tabddpm  \
     --COLLECTION_LIST OuterTrackerBarrelCollection   \
     --TRAIN \
-    --EVAL  \
     --BATCH_SIZE 4096        \
     --LEARNING_RATE 0.0005        \
     --NAME diff_OTBC_cond4_local \
@@ -35,7 +33,6 @@ commands=(
     --MODEL tabddpm  \
     --COLLECTION_LIST OuterTrackerEndcapCollection   \
     --TRAIN  \
-    --EVAL  \
     --BATCH_SIZE 4096        \
     --LEARNING_RATE 0.0005        \
     --NAME diff_OTEC_cond4_local \
@@ -46,7 +43,6 @@ commands=(
     --MODEL tabddpm  \
     --COLLECTION_LIST InnerTrackerBarrelCollection   \
     --TRAIN  \
-    --EVAL  \
     --BATCH_SIZE 4096        \
     --LEARNING_RATE 0.0005        \
     --NAME diff_ITBC_cond4_local \
@@ -57,7 +53,6 @@ commands=(
     --MODEL tabddpm  \
     --COLLECTION_LIST InnerTrackerEndcapCollection   \
     --TRAIN  \
-    --EVAL  \
     --BATCH_SIZE 4096        \
     --LEARNING_RATE 0.0005        \
     --NAME diff_ITEC_cond4_local \
@@ -68,7 +63,6 @@ commands=(
     --MODEL tabddpm  \
     --COLLECTION_LIST VertexBarrelCollection   \
     --TRAIN  \
-    --EVAL  \
     --BATCH_SIZE 4096        \
     --LEARNING_RATE 0.0005        \
     --NAME diff_VBC_cond4_local \
@@ -79,7 +73,6 @@ commands=(
     --MODEL tabddpm  \
     --COLLECTION_LIST VertexEndcapCollection   \
     --TRAIN  \
-    --EVAL  \
     --BATCH_SIZE 4096        \
     --LEARNING_RATE 0.0005        \
     --NAME diff_VEC_cond4_local \
