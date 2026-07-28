@@ -30,6 +30,7 @@ parser.add_argument("--TRAIN_ALL_BDTS", action="store_true", help="If set, train
 parser.add_argument("--PLOTS_DIR", default="plots", help="Directory to save plots")
 parser.add_argument("--SAVE_OUT_SAMPLES", action="store_true", help="If set, save out samples to disk")
 parser.add_argument("--NUM_SAMPLES_TO_COMPARE", type=int, default=1_000_000, help="Number of samples to compare for BDT evaluation")
+parser.add_argument("--CONFIGS_PATH", type=str, default="configs", help="Path to the configs file")
 
 args = parser.parse_args()
 
@@ -38,12 +39,12 @@ if not os.path.exists(args.PLOTS_DIR):
 
 
 
-with open("configs.yaml", "r") as f:
+with open(f"{args.CONFIGS_PATH}.yaml", "r") as f:
     configs = yaml.safe_load(f)
 
 BIN_BOUND = configs["BIN_BOUND"]
 NUM_BINS = configs["NUM_BINS"]
-ALL_COLLECTIONS = configs["ALL_COLLECTIONS"]
+ALL_COLLECTIONS = configs["ALL_COLLECTIONS"][:1]
 FEATURE_ORDER = configs["FEATURE_ORDER"]
 FEATURE_INDICES_DICT = configs["FEATURE_INDICES_DICT"]
 PATH_TO_DATA_DIR = configs["PATH_TO_DATA_DIR"]
@@ -56,22 +57,34 @@ log_vars = []
 if args.MODEL == "flow":
 
     if args.BASIS == "rphi":
-        PATHS_TO_SAMPLES = {
-            "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTBC_cond4/",
-            "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTEC_cond4/",
-            "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_ITBC_cond4/",
-            "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_ITEC_cond4/",
-            "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_VBC_cond4/",
-            "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_VEC_cond4/",
-                            }
+
+        if args.CONFIGS_PATH == "configs":
+            PATHS_TO_SAMPLES = {
+                "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTEC_cond4/",
+                # "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTEC_cond4/",
+                # "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_ITBC_cond4/",
+                # "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_ITEC_cond4/",
+                # "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_VBC_cond4/",
+                # "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_VEC_cond4/",
+                #                 }
+        else:
+            PATHS_TO_SAMPLES = {
+                "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTBC_cond2/",
+                # "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTEC_cond4/",
+                # "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_ITBC_cond4/",
+                # "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_ITEC_cond4/",
+                # "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_VBC_cond4/",
+                # "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_VEC_cond4/",
+                                }
+
     elif args.BASIS == "local_phi":
         PATHS_TO_SAMPLES = {
             "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTBC_cond4_local/",
-            "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTBC_cond4_local/",
-            "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTBC_cond4_local/",
-            "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTBC_cond4_local/",
-            "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTBC_cond4_local/",
-            "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTBC_cond4_local/",
+            # "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTBC_cond4_local/",
+            # "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTBC_cond4_local/",
+            # "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTBC_cond4_local/",
+            # "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTBC_cond4_local/",
+            # "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTBC_cond4_local/",
                             }
 
 elif args.MODEL == "tabddpm":
@@ -213,7 +226,7 @@ for i, col_name in enumerate(ALL_COLLECTIONS):
         "ML BIB (unmasked)": all_samples_dir[col_name],
         "ML BIB (masked)": flow_samples_masked[col_name],
         "ML BIB (masked stratified)": flow_samples_masked_stratified[col_name],
-    }, bins_dict[col_name], log_dims=log_vars, labels=feature_labels)
+    }, bins_dict[col_name], log_dims=log_vars, labels=feature_labels, yscale_log=False)
     plt.savefig(f"{args.PLOTS_DIR}/{col_name}_1d_histograms.png")
     plt.close()
 

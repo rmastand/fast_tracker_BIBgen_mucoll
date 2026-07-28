@@ -497,14 +497,14 @@ if args.EVAL:
         # unfilled[i] is True until slot i receives a mask-passing sample
         unfilled = np.ones(num_samples_total, dtype=bool)
 
-        max_rounds = 20
+        max_rounds = 100
         for rnd in range(max_rounds):
             remaining = np.where(unfilled)[0]
             if len(remaining) == 0:
                 break
 
             n_rem = len(remaining)
-            print(f"     Round {rnd+1}: {n_rem}/{num_samples_total} tabddpm slots remaining.", flush=True)
+            print(f"     Round {rnd+1}: {n_rem}/{num_samples_total} tabddpm slots remaining ({100*len(remaining)/num_samples_total:.1f}%).", flush=True)
 
             # Generate one sample per remaining slot using the exact y condition for that slot.
             # tabddpm_sample overwrites X_num_train.npy / y_train.npy each call; reload after.
@@ -592,14 +592,14 @@ if args.EVAL:
         # unfilled[i] is True until slot i receives a mask-passing sample
         unfilled = np.ones(num_samples_total, dtype=bool)
 
-        max_rounds = 50
+        max_rounds = 100
         with torch.no_grad():
             for rnd in range(max_rounds):
                 remaining = np.where(unfilled)[0]
                 if len(remaining) == 0:
                     break
 
-                print(f"     Round {rnd+1}: {len(remaining)}/{num_samples_total} flow slots remaining.", flush=True)
+                print(f"     Round {rnd+1}: {len(remaining)}/{num_samples_total} flow slots remaining ({100*len(remaining)/num_samples_total:.1f}%).", flush=True)
                 n_filled_this_round = 0
 
                 for i in tqdm(range(0, len(remaining), sample_batch_size), desc=f"       Sampling round {rnd+1}"):
