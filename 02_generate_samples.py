@@ -244,7 +244,7 @@ elif args.MODEL == "flow":
 
     # choose flow model
     if args.ZUKO_ID == "NSF":
-        flow = zuko.flows.NSF(NUM_FEATURES, NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
+        flow = zuko.flows.NSF(NUM_FEATURES, NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, bins=args.BINS).to(device)
     elif args.ZUKO_ID == "MAF":
         flow = zuko.flows.MAF(NUM_FEATURES, NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
     elif args.ZUKO_ID == "NCSF":
