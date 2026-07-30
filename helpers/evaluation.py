@@ -164,7 +164,7 @@ def discriminate_data_from_samples(
                 objective="binary:logistic",
                 random_state=i,
                 eval_metric="logloss",
-                device=device,
+                device=str(device),
             )
             eval_set = [(X_train, Y_train), (X_val, Y_val)]
             model.fit(X_train, Y_train, eval_set=eval_set, verbose=False)
@@ -395,7 +395,6 @@ def plot_pairwise_auc_matrix(auc_matrix, feature_labels=None):
     plt.colorbar(im, label="AUC")
 
     plt.tight_layout()
-    plt.show()
 
 
 
@@ -467,7 +466,9 @@ def _run_eval_suite_BDTs_inner(
             pairwise_auc = compute_pairwise_bdt_scores(data, loc_samples, device=device, num_BDTs=num_BDTs, n_cond=n_cond)
             
             plot_pairwise_auc_matrix(pairwise_auc, feature_labels)
-            
+            plt.savefig(f"{plot_dir}/pairwise_auc_{sample_key}{plot_suffix}.png")
+            plt.close()
+
             # store if you want
             single_bdt_results[sample_key]["pairwise_auc"] = pairwise_auc
             
