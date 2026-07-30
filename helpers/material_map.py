@@ -426,7 +426,7 @@ def build_masked_datasets(data_dir, samples_dir, collections, NUM_COND_INPUTS, f
     flow_samples_masked = {col_name: None for col_name in collections}
     flow_samples_masked_stratified = {col_name: None for col_name in collections}
 
-    for col_name in collections:
+    for col_name in samples_dir.keys():
         raw = samples_dir[col_name]
 
         # unmodified mask (always computed)

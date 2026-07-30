@@ -1,13 +1,12 @@
 #!/bin/bash
 #SBATCH --account=pi-rmastand    # <-- change to an allowed account
-#SBATCH --job-name=muc
+#SBATCH --job-name=diff_global
 #SBATCH --partition=gpu    # <-- change to an allowed partition
 #SBATCH --gres=gpu:1
 #SBATCH --nodes=1
 #SBATCH --constraint=rtx6000
 #SBATCH --time=36:00:00
-#SBATCH --mem=32G
-#SBATCH --array=5
+#SBATCH --array=0
 
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=rmastand@rcc.uchicago.edu  # Where to send email
@@ -18,68 +17,60 @@ cd /home/rmastand/muon_collider
 
 commands=(
 
-
-
-
   "python -u 02_generate_samples.py \
     --MODEL tabddpm  \
     --COLLECTION_LIST OuterTrackerBarrelCollection   \
     --EVAL  \
     --BATCH_SIZE 4096        \
-    --LEARNING_RATE 0.0005        \
+    --LEARNING_RATE 5e-4        \
     --NAME diff_OTBC_cond4 \
-    --BASIS rphi   \
-    --OVERSAMPLE 1  "
-
-  "python -u 02_generate_samples.py \
-    --MODEL tabddpm  \
-    --COLLECTION_LIST OuterTrackerEndcapCollection   \
-    --EVAL  \
-    --BATCH_SIZE 4096        \
-    --LEARNING_RATE 0.0005        \
-    --NAME diff_OTEC_cond4 \
-    --BASIS rphi   \
-    --OVERSAMPLE 1  "
+    --BASIS rphi  "
 
   "python -u 02_generate_samples.py \
     --MODEL tabddpm  \
     --COLLECTION_LIST InnerTrackerBarrelCollection   \
     --EVAL  \
     --BATCH_SIZE 4096        \
-    --LEARNING_RATE 0.0005        \
+    --LEARNING_RATE 5e-4        \
     --NAME diff_ITBC_cond4 \
-    --BASIS rphi   \
-    --OVERSAMPLE 1  "
+    --BASIS rphi  "
+
+  "python -u 02_generate_samples.py \
+    --MODEL tabddpm  \
+    --COLLECTION_LIST VertexBarrelCollection   \
+    --EVAL    \
+    --BATCH_SIZE 4096        \
+    --LEARNING_RATE 5e-4        \
+    --NAME diff_VBC_cond4 \
+    --BASIS rphi "
+
+  "python -u 02_generate_samples.py \
+    --MODEL tabddpm  \
+    --COLLECTION_LIST OuterTrackerEndcapCollection   \
+    --EVAL  \
+    --BATCH_SIZE 4096        \
+    --LEARNING_RATE 5e-4        \
+    --NAME diff_OTEC_cond4 \
+    --BASIS rphi  "
 
   "python -u 02_generate_samples.py \
     --MODEL tabddpm  \
     --COLLECTION_LIST InnerTrackerEndcapCollection   \
     --EVAL  \
     --BATCH_SIZE 4096        \
-    --LEARNING_RATE 0.0005        \
+    --LEARNING_RATE 5e-4        \
     --NAME diff_ITEC_cond4 \
-    --BASIS rphi   \
-    --OVERSAMPLE 1  "
-
-  "python -u 02_generate_samples.py \
-    --MODEL tabddpm  \
-    --COLLECTION_LIST VertexBarrelCollection   \
-    --EVAL  \
-    --BATCH_SIZE 4096        \
-    --LEARNING_RATE 0.0005        \
-    --NAME diff_VBC_cond4 \
-    --BASIS rphi   \
-    --OVERSAMPLE 1  "
+    --BASIS rphi  "
 
   "python -u 02_generate_samples.py \
     --MODEL tabddpm  \
     --COLLECTION_LIST VertexEndcapCollection   \
     --EVAL  \
     --BATCH_SIZE 4096        \
-    --LEARNING_RATE 0.0005        \
+    --LEARNING_RATE 5e-4        \
     --NAME diff_VEC_cond4 \
-    --BASIS rphi   \
-    --OVERSAMPLE 1  "
+    --BASIS rphi  "
+
 
   )
 

@@ -497,7 +497,7 @@ if args.EVAL:
         # unfilled[i] is True until slot i receives a mask-passing sample
         unfilled = np.ones(num_samples_total, dtype=bool)
 
-        max_rounds = 1000
+        max_rounds = 10000
         for rnd in range(max_rounds):
             remaining = np.where(unfilled)[0]
             if len(remaining) == 0:
@@ -592,7 +592,7 @@ if args.EVAL:
         # unfilled[i] is True until slot i receives a mask-passing sample
         unfilled = np.ones(num_samples_total, dtype=bool)
 
-        max_rounds = 1000
+        max_rounds = 10000
         with torch.no_grad():
             for rnd in range(max_rounds):
                 remaining = np.where(unfilled)[0]
