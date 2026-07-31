@@ -29,20 +29,21 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--INPUT_SUFFIX", type=str, default="", help="Path to the samples directory")
 parser.add_argument("--OUTPUT_PATH", type=str, default="/scratch/rrm39/v7_reco/slcio/output_flow_18_06.slcio", help="Output LCIO file path")
+parser.add_argument("--USE_TREE_CELL_ID", action="store_true", help="If set, read tree_cell_id from column 9 and run mismatch diagnostics against the geometry-assigned cell ID")
 args = parser.parse_args()
 
 OUTPUT_PATH = args.OUTPUT_PATH
 INPUT_SUFFIX = args.INPUT_SUFFIX
+USE_TREE_CELL_ID = args.USE_TREE_CELL_ID
 
 # Load hit arrays
 collections = [
      "OuterTrackerBarrelCollection",
-#    "InnerTrackerBarrelCollection",
-#    "VertexBarrelCollection",
-#       "OuterTrackerEndcapCollection",
-#      "InnerTrackerEndcapCollection",
-    
-#      "VertexEndcapCollection"    
+     "OuterTrackerEndcapCollection",
+     "InnerTrackerBarrelCollection",
+     "InnerTrackerEndcapCollection",
+     "VertexBarrelCollection",
+     "VertexEndcapCollection"    
    
 ]
 NUM_EVENTS = 1
@@ -521,7 +522,7 @@ for evt_num in range(NUM_EVENTS):
 
         NN = 5000
         all_tree_cell_ids_valid, all_tree_cell_ids_invalid = [], []
-        all_shiyu_cell_ids_valid, all_shiyu_cell_ids_invalid = [], []
+        all_geo_cell_ids_valid, all_geo_cell_ids_invalid = [], []
         all_valid_masks = []
 
         # iterate through the entire hits array with chunk size NN
@@ -539,7 +540,7 @@ for evt_num in range(NUM_EVENTS):
             xyz = np.column_stack((radius * np.cos(phi), radius * np.sin(phi), z))
             systems = np.full(len(chunk), system_id_dict[COLLECTION_NAME], dtype=np.int16)
 
-            tree_cell_id = chunk[:, 9].astype(np.int64)
+            tree_cell_id = chunk[:, 9].astype(np.int64) if USE_TREE_CELL_ID else None
 
 
             assigned = np.full(len(chunk), -1, dtype=np.int64)
@@ -552,11 +553,12 @@ for evt_num in range(NUM_EVENTS):
                 status[part] = status_part
 
             valid = (status == STATUS_UNIQUE) | (status == STATUS_RESCUED) | (status == STATUS_MULTI)
-            all_shiyu_cell_ids_valid.append(assigned[valid])
-            all_shiyu_cell_ids_invalid.append(assigned[~valid])
-            all_tree_cell_ids_valid.append(tree_cell_id[valid])
-            all_tree_cell_ids_invalid.append(tree_cell_id[~valid])
+            all_geo_cell_ids_valid.append(assigned[valid])
+            all_geo_cell_ids_invalid.append(assigned[~valid])
             all_valid_masks.append(valid)
+            if USE_TREE_CELL_ID:
+                all_tree_cell_ids_valid.append(tree_cell_id[valid])
+                all_tree_cell_ids_invalid.append(tree_cell_id[~valid])
 
             valid_xyz = xyz[valid]
             valid_edep = edep[valid]
@@ -591,186 +593,174 @@ for evt_num in range(NUM_EVENTS):
 
                 col.addElement(simhit)
 
-        all_tree_cell_ids_valid = np.concatenate(all_tree_cell_ids_valid)
-        all_shiyu_cell_ids_valid = np.concatenate(all_shiyu_cell_ids_valid)
-        all_tree_cell_ids_invalid = np.concatenate(all_tree_cell_ids_invalid)
-        all_shiyu_cell_ids_invalid = np.concatenate(all_shiyu_cell_ids_invalid )
+        all_geo_cell_ids_valid = np.concatenate(all_geo_cell_ids_valid)
+        all_geo_cell_ids_invalid = np.concatenate(all_geo_cell_ids_invalid)
         all_valid_masks = np.concatenate(all_valid_masks)
 
-        mismatch_mask = all_shiyu_cell_ids_valid != all_tree_cell_ids_valid
-        num_mismatched_cell_ids_valid = np.sum(mismatch_mask)
-        num_hits_valid_total = len(all_shiyu_cell_ids_valid)
-        print(f"Total valid hits = {num_hits_valid_total}, Mismatched cell IDs = {num_mismatched_cell_ids_valid}, Mismatch percent = {100.0 * num_mismatched_cell_ids_valid / num_hits_valid_total}")
-        
-        mismatch_indices = np.flatnonzero(mismatch_mask)
+        # print out the number of invalid hits and the percentage of invalid hits
+        print(f"Total valid hits = {len(all_geo_cell_ids_valid)}, Total invalid hits = {len(all_geo_cell_ids_invalid)}, percent invalid = {100.0 * len(all_geo_cell_ids_invalid) / (len(all_geo_cell_ids_valid) + len(all_geo_cell_ids_invalid))}")
 
-        labels_truth = decode_cellids(all_tree_cell_ids_valid)
-        labels_shiyu = decode_cellids(all_shiyu_cell_ids_valid)
+        if USE_TREE_CELL_ID:
+            all_tree_cell_ids_valid = np.concatenate(all_tree_cell_ids_valid)
+            all_tree_cell_ids_invalid = np.concatenate(all_tree_cell_ids_invalid)
 
-        radius = hits_array[:, 2].astype(np.float64)
-        phi = hits_array[:, 3].astype(np.float64)
-        z = hits_array[:, 4].astype(np.float64)
-        tmp_xyz = np.column_stack((radius * np.cos(phi), radius * np.sin(phi), z))
+            mismatch_mask = all_geo_cell_ids_valid != all_tree_cell_ids_valid
+            num_mismatched_cell_ids_valid = np.sum(mismatch_mask)
+            num_hits_valid_total = len(all_geo_cell_ids_valid)
+            print(f"Total valid hits = {num_hits_valid_total}, Mismatched cell IDs = {num_mismatched_cell_ids_valid}, Mismatch percent = {100.0 * num_mismatched_cell_ids_valid / num_hits_valid_total}")
 
-        xyz_mismatch = tmp_xyz[all_valid_masks]
+            mismatch_indices = np.flatnonzero(mismatch_mask)
 
-        for idx in mismatch_indices[::10]:
-            print(
-                f"Hit (index {idx}): "
-                f"Position = {xyz_mismatch[idx]}"
-            )
+            labels_truth = decode_cellids(all_tree_cell_ids_valid)
+            labels_geo = decode_cellids(all_geo_cell_ids_valid)
 
-            xyz = xyz_mismatch[idx][None, :]
-            # candidates in this system
+            radius = hits_array[:, 2].astype(np.float64)
+            phi = hits_array[:, 3].astype(np.float64)
+            z = hits_array[:, 4].astype(np.float64)
+            tmp_xyz = np.column_stack((radius * np.cos(phi), radius * np.sin(phi), z))
 
-            candidates = _candidate_indices(xyz, system, geom, k=k)
-            # local coordinates in each candidate sensor
-            local = _local_coordinates(xyz, candidates, geom)
+            xyz_mismatch = tmp_xyz[all_valid_masks]
 
-            # print best candidate (your assigned one)
-            pred_cellid = all_shiyu_cell_ids_valid[idx]
-            pred_idx = np.where(geom.cellids == pred_cellid)[0]
-
-            if len(pred_idx):
-                j = pred_idx[0]
-                diff = xyz[0] - geom.centers[j]
-                local_pred = geom.axes[j] @ diff
-
-                print("Predicted sensor:")
-                print("  cellid =", pred_cellid)
-                print("  decoded =", decode_cellid(pred_cellid))
-                print("  local =", local_pred)
-                print("  center =", geom.centers[j])
-
-            # print truth sensor local coords
-            truth_cellid = all_tree_cell_ids_valid[idx]
-            truth_idx = np.where(geom.cellids == truth_cellid)[0]
-
-            if len(truth_idx):
-                j = truth_idx[0]
-                diff = xyz[0] - geom.centers[j]
-                local_truth = geom.axes[j] @ diff
-
-                print("Truth sensor:")
-                print("  cellid =", truth_cellid)
-                print("  decoded =", decode_cellid(truth_cellid))
-                print("  local =", local_truth)
-                print("  center =", geom.centers[j])
-
-            print()
-            print()
-
-        exit()
-        print(f"Total invalid hits = {len(all_shiyu_cell_ids_invalid)}, percent invalid = {100.0 * len(all_shiyu_cell_ids_invalid) / (len(all_shiyu_cell_ids_valid) + len(all_shiyu_cell_ids_invalid))}")
-        for invalid_hit in range(len(all_shiyu_cell_ids_invalid[:20])):
-            labels_truth = decode_cellids(all_tree_cell_ids_invalid).astype(np.float64)
-            invalid_hit_xyz = tmp_xyz[~all_valid_masks][invalid_hit]
-            truth_cellid = all_tree_cell_ids_invalid[invalid_hit]
-            print(f"Hit {invalid_hit}: Truth cell ID = {truth_cellid}, Truth decoded = {labels_truth[invalid_hit]}. Position = {invalid_hit_xyz}")
-
-
-            
-            truth_index = np.where(geom.cellids == truth_cellid)[0]
-
-            truth_index = truth_index[0]
-
-            candidate_indices = _candidate_indices(
-                invalid_hit_xyz[None, :],
-                system_id_dict[COLLECTION_NAME],
-                geom,
-                k=64,
-            )
-
-            local = _local_coordinates(
-                invalid_hit_xyz[None, :],
-                candidate_indices,
-                geom,
-            )
-
-            hx, hy, hz = _effective_half_lengths(local, candidate_indices, geom)
-
-            inside = (
-                (np.abs(local[:,:,0]) <= hx + FP_EPS_MM)
-                &
-                (np.abs(local[:,:,1]) <= hy + FP_EPS_MM)
-                &
-                (np.abs(local[:,:,2]) <= hz + FP_EPS_MM)
-            )
-
-            print("Inside cellids:")
-            print(geom.cellids[candidate_indices[0][inside[0]]])
-            inside_indices = candidate_indices[0][inside[0]]
-
-            for idx in inside_indices:
+            for idx in mismatch_indices[::10]:
                 print(
-                    "cellid =", geom.cellids[idx],
-                    "center =", geom.centers[idx],
-                    "shape =", geom.shape_names[idx],
+                    f"Hit (index {idx}): "
+                    f"Position = {xyz_mismatch[idx]}"
                 )
 
-                diff = invalid_hit_xyz - geom.centers[idx]
-                local = geom.axes[idx] @ diff
+                xyz = xyz_mismatch[idx][None, :]
 
-                print("local =", local)
+                candidates = _candidate_indices(xyz, system, geom, k=k)
+                local = _local_coordinates(xyz, candidates, geom)
 
-            
+                pred_cellid = all_geo_cell_ids_valid[idx]
+                pred_idx = np.where(geom.cellids == pred_cellid)[0]
+
+                if len(pred_idx):
+                    j = pred_idx[0]
+                    diff = xyz[0] - geom.centers[j]
+                    local_pred = geom.axes[j] @ diff
+
+                    print("Predicted sensor:")
+                    print("  cellid =", pred_cellid)
+                    print("  decoded =", decode_cellid(pred_cellid))
+                    print("  local =", local_pred)
+                    print("  center =", geom.centers[j])
+
+                truth_cellid = all_tree_cell_ids_valid[idx]
+                truth_idx = np.where(geom.cellids == truth_cellid)[0]
+
+                if len(truth_idx):
+                    j = truth_idx[0]
+                    diff = xyz[0] - geom.centers[j]
+                    local_truth = geom.axes[j] @ diff
+
+                    print("Truth sensor:")
+                    print("  cellid =", truth_cellid)
+                    print("  decoded =", decode_cellid(truth_cellid))
+                    print("  local =", local_truth)
+                    print("  center =", geom.centers[j])
+
+                print()
+                print()
+
+            print(f"Total invalid hits = {len(all_geo_cell_ids_invalid)}, percent invalid = {100.0 * len(all_geo_cell_ids_invalid) / (len(all_geo_cell_ids_valid) + len(all_geo_cell_ids_invalid))}")
+            for invalid_hit in range(len(all_geo_cell_ids_invalid[:20])):
+                labels_truth = decode_cellids(all_tree_cell_ids_invalid).astype(np.float64)
+                invalid_hit_xyz = tmp_xyz[~all_valid_masks][invalid_hit]
+                truth_cellid = all_tree_cell_ids_invalid[invalid_hit]
+                print(f"Hit {invalid_hit}: Truth cell ID = {truth_cellid}, Truth decoded = {labels_truth[invalid_hit]}. Position = {invalid_hit_xyz}")
+
+                truth_index = np.where(geom.cellids == truth_cellid)[0]
+                truth_index = truth_index[0]
+
+                candidate_indices = _candidate_indices(
+                    invalid_hit_xyz[None, :],
+                    system_id_dict[COLLECTION_NAME],
+                    geom,
+                    k=64,
+                )
+
+                local = _local_coordinates(
+                    invalid_hit_xyz[None, :],
+                    candidate_indices,
+                    geom,
+                )
+
+                hx, hy, hz = _effective_half_lengths(local, candidate_indices, geom)
+
+                inside = (
+                    (np.abs(local[:,:,0]) <= hx + FP_EPS_MM)
+                    &
+                    (np.abs(local[:,:,1]) <= hy + FP_EPS_MM)
+                    &
+                    (np.abs(local[:,:,2]) <= hz + FP_EPS_MM)
+                )
+
+                print("Inside cellids:")
+                print(geom.cellids[candidate_indices[0][inside[0]]])
+                inside_indices = candidate_indices[0][inside[0]]
+
+                for idx in inside_indices:
+                    print(
+                        "cellid =", geom.cellids[idx],
+                        "center =", geom.centers[idx],
+                        "shape =", geom.shape_names[idx],
+                    )
+
+                    diff = invalid_hit_xyz - geom.centers[idx]
+                    local = geom.axes[idx] @ diff
+
+                    print("local =", local)
+
+                candidate_indices = _candidate_indices(
+                    invalid_hit_xyz[None, :],
+                    system_id_dict[COLLECTION_NAME],
+                    geom,
+                    k=64,
+                )[0]
+
+                candidate_cellids = geom.cellids[candidate_indices]
+
+                print("Truth in candidates?", truth_cellid in candidate_cellids)
+
+                if truth_cellid in candidate_cellids:
+                    print("    Candidate rank:",
+                        np.where(candidate_cellids == truth_cellid)[0][0])
+                center = geom.centers[truth_index]
+                axes = geom.axes[truth_index]
+                diff = invalid_hit_xyz - center
+                local = axes @ diff
+                half = geom.half_lengths[truth_index]
+
+                hx = half[0]
+                hy = half[1]
+                hz = half[2]
+
+                if geom.shape_names[truth_index] == "TGeoTrd2":
+                    params = geom.trd2_params[truth_index]
+
+                    dx1, dx2, dy1, dy2, dz = params
+
+                    frac = np.clip((local[2] / dz + 1.0) * 0.5, 0.0, 1.0)
+
+                    hx = dx1 * (1.0 - frac) + dx2 * frac
+                    hy = dy1 * (1.0 - frac) + dy2 * frac
+                    hz = dz
+
+                inside = (
+                    abs(local[0]) <= hx + FP_EPS_MM and
+                    abs(local[1]) <= hy + FP_EPS_MM and
+                    abs(local[2]) <= hz + FP_EPS_MM
+                )
+
+                print(f"    local = {local}")
+                print(f"    center = {center}")
+                #print(f"    half lengths = ({hx}, {hy}, {hz})")
+                print(f"    inside truth sensor? {inside}")
+
+                print()
 
 
-
-            candidate_indices = _candidate_indices(
-                invalid_hit_xyz[None, :],
-                system_id_dict[COLLECTION_NAME],
-                geom,
-                k=64,
-            )[0]
-
-            candidate_cellids = geom.cellids[candidate_indices]
-
-            print("Truth in candidates?", truth_cellid in candidate_cellids)
-
-            if truth_cellid in candidate_cellids:
-                print("    Candidate rank:",
-                    np.where(candidate_cellids == truth_cellid)[0][0])
-            center = geom.centers[truth_index]
-            axes = geom.axes[truth_index]
-            diff = invalid_hit_xyz - center
-            # Convert global -> local
-            local = axes @ diff
-            half = geom.half_lengths[truth_index]
-
-            hx = half[0]
-            hy = half[1]
-            hz = half[2]
-
-            if geom.shape_names[truth_index] == "TGeoTrd2":
-                params = geom.trd2_params[truth_index]
-
-                dx1, dx2, dy1, dy2, dz = params
-
-                frac = np.clip((local[2] / dz + 1.0) * 0.5, 0.0, 1.0)
-
-                hx = dx1 * (1.0 - frac) + dx2 * frac
-                hy = dy1 * (1.0 - frac) + dy2 * frac
-                hz = dz
-
-            inside = (
-                abs(local[0]) <= hx + FP_EPS_MM and
-                abs(local[1]) <= hy + FP_EPS_MM and
-                abs(local[2]) <= hz + FP_EPS_MM
-            )
-
-            print(f"    local = {local}")
-            print(f"    center = {center}")
-            #print(f"    half lengths = ({hx}, {hy}, {hz})")
-            print(f"    inside truth sensor? {inside}")
-
-            print()
-
-
-            # also print the xyz position of the invalid hit
-
-
-            
 
 
         
