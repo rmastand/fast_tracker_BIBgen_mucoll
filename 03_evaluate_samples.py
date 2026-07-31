@@ -29,9 +29,9 @@ parser.add_argument("--TRAIN_SINGLE_BDTS", action="store_true", help="If set, tr
 parser.add_argument("--TRAIN_ALL_BDTS", action="store_true", help="If set, train BDTs on all collections combined")
 parser.add_argument("--PLOTS_DIR", default="plots", help="Directory to save plots")
 parser.add_argument("--SAVE_OUT_SAMPLES", action="store_true", help="If set, save out samples to disk")
-parser.add_argument("--NUM_SAMPLES_TO_COMPARE", type=int, default=100_000, help="Number of samples to compare for BDT evaluation")
+parser.add_argument("--NUM_SAMPLES_TO_COMPARE", type=int, default=1_000_000, help="Number of samples to compare for BDT evaluation")
 parser.add_argument("--CONFIGS_PATH", type=str, default="configs", help="Path to the configs file")
-run_single_feature_BDTs = False
+run_single_feature_BDTs = True
 args = parser.parse_args()
 
 if not os.path.exists(args.PLOTS_DIR):

@@ -1,4 +1,6 @@
+import gc
 import json
+import shutil
 import sys
 from pathlib import Path
 import pandas as pd
@@ -492,10 +494,12 @@ if args.EVAL:
             change_val=False,
         )
 
-        # output_samples[i] holds one mask-passing sample for the context of X[sample_indices[i]]
-        output_samples = np.empty((num_samples_total, X.shape[1]), dtype=np.float32)
         # unfilled[i] is True until slot i receives a mask-passing sample
         unfilled = np.ones(num_samples_total, dtype=bool)
+        # Save each round's results to disk so large arrays can be freed between rounds
+        intermediate_dir = Path(save_dir) / "sampling_intermediates"
+        intermediate_dir.mkdir(exist_ok=True)
+        round_results = []  # list of (samples_path, indices_path)
 
         max_rounds = 10000
         for rnd in range(max_rounds):
@@ -544,9 +548,20 @@ if args.EVAL:
             )
 
             passing = np.where(mask)[0]
-            output_samples[remaining[passing]] = loc_samples[passing]
-            unfilled[remaining[passing]] = False
+            if len(passing) > 0:
+                rnd_samples_path = intermediate_dir / f"round_{rnd}_samples.npy"
+                rnd_indices_path = intermediate_dir / f"round_{rnd}_indices.npy"
+                np.save(rnd_samples_path, loc_samples[passing].astype(np.float32))
+                np.save(rnd_indices_path, remaining[passing])
+                round_results.append((rnd_samples_path, rnd_indices_path))
+                unfilled[remaining[passing]] = False
             print(f"       Filled {len(passing)} new samples this round.", flush=True)
+
+            # Free large intermediate arrays before the next round to avoid OOM
+            del X_gen, y_gen, loc_samples, mask
+            if args.Y_MODE != "none":
+                del cond_gen
+            gc.collect()
 
         if np.any(unfilled):
             # Save the X context rows that never converged for external inspection / retry
@@ -555,6 +570,16 @@ if args.EVAL:
             print(f"WARNING: {unfilled.sum()} tabddpm slots still unfilled after {max_rounds} rounds. "
                   f"Unfilled contexts saved to {unfilled_ctx_path.name}. "
                   "Saving only the filled samples.", flush=True)
+
+        # Compile per-round intermediate files into the final array, then clean up
+        print("     Compiling intermediate round files...", flush=True)
+        output_samples = np.empty((num_samples_total, X.shape[1]), dtype=np.float32)
+        for rnd_samples_path, rnd_indices_path in round_results:
+            r_samp = np.load(rnd_samples_path)
+            r_idx  = np.load(rnd_indices_path)
+            output_samples[r_idx] = r_samp
+        shutil.rmtree(intermediate_dir)
+        print("     Intermediate files cleaned up.", flush=True)
 
         # samples is in global physical space (inverse_geometry applied inside the loop above);
         # trimmed to only the slots that were successfully filled
