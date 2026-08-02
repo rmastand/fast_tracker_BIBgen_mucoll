@@ -1,6 +1,8 @@
 import gc
 import json
+import pickle
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 import pandas as pd
@@ -494,6 +496,16 @@ if args.EVAL:
             change_val=False,
         )
 
+        # Free parent-process arrays not needed during the sampling loop.
+        # SLURM cgroups count parent + subprocess together; a lighter parent
+        # footprint leaves more headroom for the subprocess to load the model.
+        del X_values, X_train, X_val, train_indices, val_indices
+        del y_values   # y_per_slot already holds the needed slice
+        if NUM_COND_INPUTS > 0:
+            del condition_ids
+        del X_global   # not needed for barrel; for endcap, z_lookup already built above
+        gc.collect()
+
         # unfilled[i] is True until slot i receives a mask-passing sample
         unfilled = np.ones(num_samples_total, dtype=bool)
         # Save each round's results to disk so large arrays can be freed between rounds
@@ -512,12 +524,39 @@ if args.EVAL:
 
             # Generate one sample per remaining slot using the exact y condition for that slot.
             # tabddpm_sample overwrites X_num_train.npy / y_train.npy each call; reload after.
-            tabddpm_sample(
+            # Run tabddpm_sample in a subprocess so the model (~400 MB), diffusion
+            # object, and training dataset are fully released (process exit) before
+            # the next round.  A direct call leaves PyTorch reference cycles alive
+            # across rounds, causing inter-round OOM.
+            call_kwargs = {
                 **tabddpm_kwargs,
-                num_samples=n_rem,
-                seed=sample_seed + rnd,
-                y_to_sample=y_per_slot[remaining] if args.Y_MODE == "cond" else None,
+                "num_samples": n_rem,
+                "seed": sample_seed + rnd,
+                "device": str(tabddpm_kwargs["device"]),  # str so pickle doesn't need torch pre-imported
+            }
+            kwargs_path = intermediate_dir / f"round_{rnd}_kwargs.pkl"
+            with open(kwargs_path, "wb") as f:
+                pickle.dump(call_kwargs, f)
+
+            y_path = None
+            if args.Y_MODE == "cond":
+                y_path = intermediate_dir / f"round_{rnd}_y.npy"
+                np.save(y_path, y_per_slot[remaining])
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT_DIR / "helpers" / "run_tabddpm_sample.py"),
+                    "--tabddpm-root", str(TABDDPM_ROOT),
+                    "--tabddpm-scripts", str(TABDDPM_SCRIPTS),
+                    "--kwargs-path", str(kwargs_path),
+                    *(["--y-path", str(y_path)] if y_path is not None else []),
+                ],
+                check=True,
             )
+            kwargs_path.unlink()
+            if y_path is not None:
+                y_path.unlink()
 
             X_gen = np.load(Path(save_dir) / "X_num_train.npy").astype(np.float32)
             y_gen = np.load(Path(save_dir) / "y_train.npy").astype(np.int64)
