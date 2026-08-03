@@ -560,7 +560,7 @@ if args.EVAL:
         del y_values   # y_per_slot already holds the needed slice
         if NUM_COND_INPUTS > 0:
             del condition_ids
-        del X_global   # not needed for barrel; for endcap, z_lookup already built above
+        # del X_global   # not needed for barrel; for endcap, z_lookup already built above
         gc.collect()
 
         # unfilled[i] is True until slot i receives a mask-passing sample
@@ -789,9 +789,9 @@ if args.EVAL:
     print("     Making plots...")
 
     if bins_dict:
-        fig_samp, axes_samp = plot_corner_hist_2d(samples, feature_labels=feature_labels, bins_dict=bins_dict, log_dims=log_vars, title= f"generated_{args.BASIS}",)
-        plt.savefig(f"{plots_dir}/corner_generated_{args.BASIS}_final")
-        plt.close()
+        # fig_samp, axes_samp = plot_corner_hist_2d(samples, feature_labels=feature_labels, bins_dict=bins_dict, log_dims=log_vars, title= f"generated_{args.BASIS}",)
+        # plt.savefig(f"{plots_dir}/corner_generated_{args.BASIS}_final")
+        # plt.close()
 
         fig_samp, axes_samp = plot_corner_hist_2d(samples_global, feature_labels=global_feature_labels, bins_dict=bins_dict, log_dims=log_vars, title= f"generated_global",)
         plt.savefig(f"{plots_dir}/corner_generated_global_final")
@@ -799,10 +799,10 @@ if args.EVAL:
 
     print("     Done making plots.")
             
-    # print("     Comparing samples to target...")
-    # results_dir = evaluate_samples(samples, samples_global, args.BASIS, X, X_global, feature_labels, global_feature_labels, save_dir, NUM_BINS, args.NUM_BDTS, args.BDT_SUBSAMPLE_FRAC, device, log_vars)
-    # wandb.log(results_dir)
-    # print(results_dir)
+    print("     Comparing samples to target...")
+    results_dir = evaluate_samples(samples, samples_global, args.BASIS, X, X_global, feature_labels, global_feature_labels, save_dir, NUM_BINS, args.NUM_BDTS, args.BDT_SUBSAMPLE_FRAC, device, log_vars)
+    wandb.log({"auc_mean": results_dir["global"]["global_auc_mean"]})
+    print(results_dir)
 
 
 
