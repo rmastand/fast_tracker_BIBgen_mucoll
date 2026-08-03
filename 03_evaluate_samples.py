@@ -21,7 +21,7 @@ print( "Using device: " + str( device ), flush=True)
 
 import argparse
 parser = argparse.ArgumentParser()
-parser.add_argument("--num_BDTs", type=int, default=10, help="Number of BDTs to train for evaluation")
+parser.add_argument("--num_BDTs", type=int, default=5, help="Number of BDTs to train for evaluation")
 parser.add_argument("--MODEL", choices=["flow_NCSF", "flow_NSF", "tabddpm"],default="flow", help="Generative_model")
 parser.add_argument("--BASIS", choices=["xy", "rphi", "local_phi"], default="rphi", help="Coordinate basis used for training")
 parser.add_argument("--NO_SNAP_Z", action="store_true", help="If set, do not snap z to detector")
@@ -29,10 +29,12 @@ parser.add_argument("--TRAIN_SINGLE_BDTS", action="store_true", help="If set, tr
 parser.add_argument("--TRAIN_ALL_BDTS", action="store_true", help="If set, train BDTs on all collections combined")
 parser.add_argument("--PLOTS_DIR", default="plots", help="Directory to save plots")
 parser.add_argument("--SAVE_OUT_SAMPLES", action="store_true", help="If set, save out samples to disk")
-parser.add_argument("--NUM_SAMPLES_TO_COMPARE", type=int, default=1_000_000, help="Number of samples to compare for BDT evaluation")
+parser.add_argument("--NUM_SAMPLES_TO_COMPARE", type=int, default=-1, help="Number of samples to compare for BDT evaluation")
 parser.add_argument("--CONFIGS_PATH", type=str, default="configs", help="Path to the configs file")
-run_single_feature_BDTs = True
+run_single_feature_BDTs = False
 args = parser.parse_args()
+
+subset = 1
 
 if not os.path.exists(args.PLOTS_DIR):
     os.makedirs(args.PLOTS_DIR)
@@ -123,6 +125,12 @@ elif args.MODEL == "tabddpm":
 
 
 
+all_data_dir_global = {}
+all_samples_masked_global = {}
+bins_dict_global = {}
+feature_labels_dict_global = {}
+
+
 for i, col_name in enumerate(ALL_COLLECTIONS):
 
     print(f"Loading in data and samples for {col_name}...", flush=True)
@@ -186,6 +194,9 @@ for i, col_name in enumerate(ALL_COLLECTIONS):
                 FEATURE_INDICES_DICT["z"],
             )
 
+            # save out the lookup
+            with open(f"{PATH_TO_DATA_DIR}/z_lookup_{col_name}.pkl", "wb") as f:
+                pickle.dump(z_lookup, f)
 
             plt.hist(
                 all_data_dir[col_name][:, z_idx],
@@ -201,6 +212,7 @@ for i, col_name in enumerate(ALL_COLLECTIONS):
                 label="ML BIB (before snapping)"
             )
 
+
                 
 
             z_samples_snapped =  snap_z_to_detector_xy(
@@ -210,6 +222,8 @@ for i, col_name in enumerate(ALL_COLLECTIONS):
                 layers,
                 z_lookup,
             )
+
+            
 
             all_samples_dir[col_name][:,FEATURE_INDICES_DICT["z"]] = z_samples_snapped
         
@@ -237,7 +251,16 @@ for i, col_name in enumerate(ALL_COLLECTIONS):
     # make the flow samples evaluation
     print()
     print("Building masked datasets...", flush=True)
-    flow_samples_masked, flow_samples_masked_stratified = build_masked_datasets(all_data_dir, all_samples_dir, ALL_COLLECTIONS, NUM_COND_INPUTS, FEATURE_INDICES_DICT, stratify = True)
+    flow_samples_masked, _ = build_masked_datasets(all_data_dir, all_samples_dir, ALL_COLLECTIONS, NUM_COND_INPUTS, FEATURE_INDICES_DICT, stratify = False)
+
+    n_col_data = all_data_dir[col_name].shape[0]
+    n_col_samples = flow_samples_masked[col_name].shape[0]
+    idx_data = np.random.choice(n_col_data, size=int(subset * n_col_data), replace=False)
+    idx_samples = np.random.choice(n_col_samples, size=int(subset * n_col_samples), replace=False)
+    all_data_dir_global[col_name] = all_data_dir[col_name][idx_data]
+    all_samples_masked_global[col_name] = flow_samples_masked[col_name][idx_samples]
+    bins_dict_global[col_name] = bins_dict[col_name]
+    feature_labels_dict_global[col_name] = feature_labels
 
 
 
@@ -271,12 +294,12 @@ for i, col_name in enumerate(ALL_COLLECTIONS):
             flow_samples_masked[col_name][:, FEATURE_INDICES_DICT["r"]] *
             np.sin(flow_samples_masked[col_name][:, FEATURE_INDICES_DICT["phi"]])
         ),
-        "ML BIB (masked stratified)": (
-            flow_samples_masked_stratified[col_name][:, FEATURE_INDICES_DICT["r"]] *
-            np.cos(flow_samples_masked_stratified[col_name][:, FEATURE_INDICES_DICT["phi"]]),
-            flow_samples_masked_stratified[col_name][:, FEATURE_INDICES_DICT["r"]] *
-            np.sin(flow_samples_masked_stratified[col_name][:, FEATURE_INDICES_DICT["phi"]])
-        ),
+        # "ML BIB (masked stratified)": (
+        #     flow_samples_masked_stratified[col_name][:, FEATURE_INDICES_DICT["r"]] *
+        #     np.cos(flow_samples_masked_stratified[col_name][:, FEATURE_INDICES_DICT["phi"]]),
+        #     flow_samples_masked_stratified[col_name][:, FEATURE_INDICES_DICT["r"]] *
+        #     np.sin(flow_samples_masked_stratified[col_name][:, FEATURE_INDICES_DICT["phi"]])
+        # ),
     }
 
     make_2d_plots(loc_array, ["$x$ [mm]", "$y$ [mm]"], col_name)
@@ -313,8 +336,12 @@ for i, col_name in enumerate(ALL_COLLECTIONS):
 
         print(f"Analyzing {col_name}...")
 
-        
-        N = np.min([args.NUM_SAMPLES_TO_COMPARE, len(flow_samples_masked[col_name])])
+        # If NUM_SAMPLES_TO_COMPARE is -1, use all samples
+
+        if args.NUM_SAMPLES_TO_COMPARE == -1:   
+            N = min(all_data_dir[col_name].shape[0], flow_samples_masked[col_name].shape[0])
+        else:
+            N = min(args.NUM_SAMPLES_TO_COMPARE, all_data_dir[col_name].shape[0], flow_samples_masked[col_name].shape[0])
 
         
         indices_data = np.random.choice(all_data_dir[col_name].shape[0], size=N, replace=False)
@@ -388,48 +415,49 @@ for i, col_name in enumerate(ALL_COLLECTIONS):
 
 
 
-# if args.TRAIN_ALL_BDTS:
+if args.TRAIN_ALL_BDTS:
 
-# print()
-# print("Running evaluation suite with BDTs (all collections at once)...", flush=True)
-# # all 6 systems at once
+    print()
+    print("Running evaluation suite with BDTs (all collections at once)...", flush=True)
 
-# all_bdt_results, all_scores, all_plot_data = {}, {}, {}
+    total_data = []
+    total_samples = []
 
-# total_data = []
-# total_samples = []
-        
-# for col_name in ALL_COLLECTIONS:
+    for col_name in ALL_COLLECTIONS:
+        if col_name not in all_data_dir_global:
+            print(f"Skipping {col_name} — not loaded successfully")
+            continue
+        total_data.append(all_data_dir_global[col_name])
+        total_samples.append(all_samples_masked_global[col_name])
+        print(f"  {col_name}: {all_data_dir_global[col_name].shape[0]} data, {all_samples_masked_global[col_name].shape[0]} samples")
 
-#     total_data.append(all_data_dir[col_name])
-#     total_samples.append(all_samples_dir[col_name])
+    total_data = np.concatenate(total_data, axis=0)
+    total_samples = np.concatenate(total_samples, axis=0)
+    print(f"Total: {total_data.shape}, {total_samples.shape}")
 
-    
-# total_data = np.concatenate(total_data, axis = 0)
-# total_samples = np.concatenate(total_samples, axis = 0)
-# print(total_data.shape, total_samples.shape)
+    # compute bins from combined data
+    combined_bins = {}
+    for fi in range(total_data.shape[1]):
+        if fi in log_vars:
+            combined_bins[fi] = np.logspace(np.log10(0.9 * np.min(total_data[:, fi])), np.log10(1.1 * np.max(total_data[:, fi])), NUM_BINS)
+        else:
+            combined_bins[fi] = np.linspace(np.min(total_data[:, fi]) - 3, np.max(total_data[:, fi]) + 3, NUM_BINS)
 
+    first_col = next(iter(all_data_dir_global))
+    combined_feature_labels = feature_labels_dict_global[first_col]
 
-
-# indices_data = np.random.choice(total_data.shape[0], size=args.NUM_SAMPLES_TO_COMPARE, replace=False)
-# indices_flow = np.random.choice(total_samples.shape[0], size=args.NUM_SAMPLES_TO_COMPARE, replace=False)
-
-# loc_bdt_results, loc_scores, loc_plot_data = run_eval_suite_BDTs(
-#                         total_data[indices_data][:,:-NUM_COND_INPUTS],
-#                         {
-#                             #"unmasked":all_samples_dir[col_name][indices_2],
-#                             "masked":total_samples[indices_flow][:,:-NUM_COND_INPUTS],
-#                         },
-#                         bins_dict[col_name],
-#                         n_cond=0,
-#                         device=device,
-#                         num_BDTs=args.num_BDTs,
-#                         plot_suffix=f"_{col_name}",
-#                         feature_labels=feature_labels_dict[col_name],
-#                         run_single_feature_BDTs=False,
-#                         )
-
-# all_bdt_results[col_name] = loc_bdt_results
-# all_scores[col_name] = loc_scores
-# all_plot_data[col_name] = loc_plot_data
+    all_bdt_results, all_bdt_scores, all_bdt_plot_data = run_eval_suite_BDTs(
+        total_data[:, :-NUM_COND_INPUTS],
+        {
+            "masked": total_samples[:, :-NUM_COND_INPUTS],
+        },
+        combined_bins,
+        n_cond=0,
+        device=device,
+        num_BDTs=args.num_BDTs,
+        plot_suffix="_all_collections",
+        feature_labels=combined_feature_labels[:-NUM_COND_INPUTS],
+        run_single_feature_BDTs=False,
+        plot_dir=args.PLOTS_DIR,
+    )
 

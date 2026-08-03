@@ -1,6 +1,7 @@
 import gc
 import json
 import pickle
+import re
 import shutil
 import subprocess
 import sys
@@ -57,8 +58,10 @@ parser.add_argument("--TRAIN", action="store_true", help="Whether to train the f
 parser.add_argument("--EVAL", action="store_true", help="Whether to evaluate the flow after training")
 parser.add_argument("--NUM_BDTS", type=int, default=1, help="For sample evaluation")
 parser.add_argument("--BDT_SUBSAMPLE_FRAC", type=float, default=1.0, help="Evaluation subsample fraction")
-parser.add_argument("--SEED", type=int, default=8, help="Random seed") 
+parser.add_argument("--SEED", type=int, default=8, help="Random seed")
 parser.add_argument("--TRAINING_FRAC", type=float, default=1, help="How much training data to use")
+parser.add_argument("--CONTEXT_FILE", type=str, default=None,
+    help="Path to .contexts.npy with shape (N, NUM_COND_INPUTS); skips data loading and uses these contexts exactly")
 
 
 # flow-specific arguments
@@ -102,6 +105,7 @@ SAVE_DIR = configs["PATH_TO_OUTPUT_DIR"]
 WANDB_DIR = configs["PATH_TO_WANDB_DIR"]
 NUM_COND_INPUTS = configs["NUM_COND_INPUTS"]
 FEATURE_INDICES_DICT = configs["FEATURE_INDICES_DICT"]
+SYSTEM_ID_DICT = configs["system_id_dict"]
 
 
 
@@ -150,68 +154,91 @@ log_vars = []
 
 # %%
 
-X, feature_labels = load_in_data(collection_list, args.BASIS, configs["PATH_TO_DATA_DIR"], args.TRAINING_FRAC, NUM_COND_INPUTS, feature_order=FEATURE_ORDER)
-
-
-# Keep a global reference for evaluating the final global samples
-X_global = inverse_geometry_transform(X, args.BASIS, collection_list[0], FEATURE_ORDER)
-global_feature_labels = [label.replace(" (local)", "") for label in feature_labels]
-
-print(f"Data has shape {X.shape}")
-print("Feature labels:", feature_labels)
-NUM_FEATURES = X.shape[1] - NUM_COND_INPUTS
-
-bins_dict = {}
-bins_dict_preproc = {i:np.linspace(-BIN_BOUND, BIN_BOUND, NUM_BINS) for i in range(X.shape[1])}
-
-for i in range(X.shape[1]):
-    if i in log_vars:
-        bins_dict[i] = np.logspace(np.log10(0.9*np.min(X[:,i])), np.log10(1.1*np.max(X[:,i])), NUM_BINS) 
+if args.CONTEXT_FILE is not None:
+    if args.TRAIN:
+        raise ValueError("--CONTEXT_FILE requires a pre-trained model; --TRAIN is not allowed.")
+    with open(Path(save_dir) / "run_config.json") as _f:
+        _rc = json.load(_f)
+    feature_labels = _rc["feature_labels"]
+    NUM_FEATURES = _rc["num_features"]
+    global_feature_labels = [label.replace(" (local)", "") for label in feature_labels]
+    X = None
+    X_global = None
+    bins_dict = {}
+    bins_dict_preproc = {}
+    X_train = X_val = train_indices = val_indices = condition_ids = condition_lookup = None
+    if args.MODEL == "tabddpm":
+        y_lookup = np.load(Path(save_dir) / "y_lookup.npy") if args.Y_MODE != "none" else None
+        n_classes = _rc["n_classes"]
+        is_y_cond = _rc["is_y_cond"]
+        _ncols = NUM_FEATURES if args.Y_MODE != "none" else NUM_FEATURES + NUM_COND_INPUTS
+        X_values = np.empty((0, _ncols), dtype=np.float32)
+        y_values = None
     else:
-        bins_dict[i] = np.linspace(np.min(X[:,i] - 1), np.max(X[:,i] + 1), NUM_BINS) 
+        X_values = None
+        y_values = None
+        n_classes = None
+        is_y_cond = None
+else:
+    X, feature_labels = load_in_data(collection_list, args.BASIS, configs["PATH_TO_DATA_DIR"], args.TRAINING_FRAC, NUM_COND_INPUTS, feature_order=FEATURE_ORDER)
 
-# Pack condition rows once for the shared stratified split and TabDDPM class labels.
-condition_ids = None
-condition_lookup = None
-if NUM_COND_INPUTS > 0:
-    condition_ids, condition_lookup = pack_condition_rows(X[:, NUM_FEATURES:])
+    # Keep a global reference for evaluating the final global samples
+    X_global = inverse_geometry_transform(X, args.BASIS, collection_list[0], FEATURE_ORDER)
+    global_feature_labels = [label.replace(" (local)", "") for label in feature_labels]
 
-X_train, X_val, train_indices, val_indices = train_test_split(X, np.arange(len(X)), test_size=0.2, random_state=42, stratify=condition_ids)
-fig_samp, axes_samp = plot_corner_hist_2d(
-        X_train,
-        feature_labels=feature_labels,
-        bins_dict=bins_dict,
-        log_dims=log_vars,
-        title= "data",
+    print(f"Data has shape {X.shape}")
+    print("Feature labels:", feature_labels)
+    NUM_FEATURES = X.shape[1] - NUM_COND_INPUTS
+
+    bins_dict = {}
+    bins_dict_preproc = {i:np.linspace(-BIN_BOUND, BIN_BOUND, NUM_BINS) for i in range(X.shape[1])}
+
+    for i in range(X.shape[1]):
+        if i in log_vars:
+            bins_dict[i] = np.logspace(np.log10(0.9*np.min(X[:,i])), np.log10(1.1*np.max(X[:,i])), NUM_BINS)
+        else:
+            bins_dict[i] = np.linspace(np.min(X[:,i] - 1), np.max(X[:,i] + 1), NUM_BINS)
+
+    # Pack condition rows once for the shared stratified split and TabDDPM class labels.
+    condition_ids = None
+    condition_lookup = None
+    if NUM_COND_INPUTS > 0:
+        condition_ids, condition_lookup = pack_condition_rows(X[:, NUM_FEATURES:])
+
+    X_train, X_val, train_indices, val_indices = train_test_split(X, np.arange(len(X)), test_size=0.2, random_state=42, stratify=condition_ids)
+    fig_samp, axes_samp = plot_corner_hist_2d(
+            X_train,
+            feature_labels=feature_labels,
+            bins_dict=bins_dict,
+            log_dims=log_vars,
+            title= "data",
+        )
+    plt.savefig(f"{plots_dir}/data_final")
+    plt.close()
+
+    if args.MODEL == "tabddpm":
+        if args.Y_MODE == "none": # no conditioning, just train on the features
+            X_values = X.astype(np.float32)
+            y_values = np.zeros(len(X_values), dtype=np.int64)
+            y_lookup = None
+        else: # conditioning on the features, so pack the conditioning features into a single integer label
+            X_values = X[:, :NUM_FEATURES].astype(np.float32)
+            y_values = condition_ids
+            y_lookup = condition_lookup
+            np.save(Path(save_dir) / "y_lookup.npy", y_lookup)
+        is_y_cond = args.Y_MODE == "cond"
+
+    elif args.MODEL == "flow":
+        X_values = X
+        y_values = np.zeros((len(X_values), 1)) # conditioning features are stored within X for the flow
+
+    n_classes = export_dataset(
+        dataset_dir,
+        X_values,
+        y_values,
+        train_indices,
+        val_indices,
     )
-plt.savefig(f"{plots_dir}/data_final")
-plt.close()
-
-if args.MODEL == "tabddpm":
-    if args.Y_MODE == "none": # no conditioning, just train on the features
-        X_values = X.astype(np.float32)
-        y_values = np.zeros(len(X_values), dtype=np.int64)
-        y_lookup = None
-    else: # conditioning on the features, so pack the conditioning features into a single integer label
-        X_values = X[:, :NUM_FEATURES].astype(np.float32)
-        y_values = condition_ids
-        y_lookup = condition_lookup
-        np.save(Path(save_dir) / "y_lookup.npy", y_lookup)
-    is_y_cond = args.Y_MODE == "cond"
-
-
-elif args.MODEL == "flow":
-    X_values = X
-    y_values = np.zeros((len(X_values), 1)) # conditioning features are stored within X for the flow
-
-
-n_classes = export_dataset(
-    dataset_dir,
-    X_values,
-    y_values,
-    train_indices,
-    val_indices,
-)
 
 if args.MODEL == "tabddpm":
 
@@ -268,20 +295,21 @@ elif args.MODEL == "flow":
     print(f"Number of trainable parameters: {num_params}")
 
 
-# Save the resolved run configuration before training
-run_config["feature_labels"] = feature_labels
-run_config["num_features"] = int(NUM_FEATURES)
+# Save the resolved run configuration before training (skip when loading pre-trained model)
+if args.CONTEXT_FILE is None:
+    run_config["feature_labels"] = feature_labels
+    run_config["num_features"] = int(NUM_FEATURES)
 
-if args.MODEL == "tabddpm":
-    run_config["n_classes"] = int(n_classes)
-    run_config["is_y_cond"] = bool(is_y_cond)
+    if args.MODEL == "tabddpm":
+        run_config["n_classes"] = int(n_classes)
+        run_config["is_y_cond"] = bool(is_y_cond)
 
-with open(
-    Path(save_dir) / "run_config.json",
-    "w",
-    encoding="utf-8",
-) as output_file:
-    json.dump(run_config, output_file, indent=2)
+    with open(
+        Path(save_dir) / "run_config.json",
+        "w",
+        encoding="utf-8",
+    ) as output_file:
+        json.dump(run_config, output_file, indent=2)
 
 
 if args.TRAIN:
@@ -441,42 +469,71 @@ if args.EVAL:
     print(f"\nEvaluating {args.MODEL} model...")
 
     # Determine output filename and seed, so repeated runs produce different samples.
-    existing_files = sorted(Path(save_dir).glob("generated_samples*.npy"))
-    n_existing = len(existing_files)
-    if n_existing == 0:
-        samples_out_path = Path(save_dir) / "generated_samples.npy"
+    if args.CONTEXT_FILE is not None:
+        m = re.search(r'(\d+)_contexts', Path(args.CONTEXT_FILE).name)
+        context_idx = m.group(1) if m else Path(args.CONTEXT_FILE).stem
+        samples_out_path = Path(save_dir) / f"generated_samples_from_context_{context_idx}.npy"
         sample_seed = seed
-    else:
-        samples_out_path = Path(save_dir) / f"generated_samples_{n_existing + 1}.npy"
-        sample_seed = seed + n_existing
-        print(f"     Found existing generated samples file(s): {[f.name for f in existing_files]}")
         print(f"     Saving new samples to {samples_out_path.name} with seed {sample_seed}.")
+    else:
+        existing_files = sorted(Path(save_dir).glob("generated_samples*.npy"))
+        n_existing = len(existing_files)
+        if n_existing == 0:
+            samples_out_path = Path(save_dir) / "generated_samples.npy"
+            sample_seed = seed
+        else:
+            samples_out_path = Path(save_dir) / f"generated_samples_{n_existing + 1}.npy"
+            sample_seed = seed + n_existing
+            print(f"     Found existing generated samples file(s): {[f.name for f in existing_files]}")
+            print(f"     Saving new samples to {samples_out_path.name} with seed {sample_seed}.")
 
     torch.manual_seed(sample_seed)
     np.random.seed(sample_seed)
 
     print("     Making samples...")
-    sample_indices = np.tile(np.arange(len(X)), args.OVERSAMPLE)
+    if args.CONTEXT_FILE is not None:
+        external_contexts = np.load(args.CONTEXT_FILE).astype(np.float32)
+        print(f"     Loaded external contexts from {args.CONTEXT_FILE} ({len(external_contexts)} total rows).")
+        system_id = SYSTEM_ID_DICT[collection_list[0]]
+        sys_mask = external_contexts[:, 0] == system_id
+        n_other = int((~sys_mask).sum())
+        external_contexts = external_contexts[sys_mask, 1:]  # keep only this system; drop system_id column
+        print(f"     Filtered to system_id={system_id} ({collection_list[0]}): {len(external_contexts)} rows ({n_other} from other systems dropped).")
+        sample_indices = np.tile(np.arange(len(external_contexts)), args.OVERSAMPLE)
+        if args.MODEL == "tabddpm" and args.Y_MODE == "cond":
+            _rev = {tuple(row.tolist()): lbl for lbl, row in enumerate(y_lookup)}
+            n_orig = len(external_contexts)
+            keep = np.array([tuple(r.tolist()) in _rev for r in external_contexts])
+            n_dropped = int((~keep).sum())
+            if n_dropped > 0:
+                print(f"     WARNING: {n_dropped}/{n_orig} "
+                      f"({100*n_dropped/n_orig:.1f}%) external context rows not found in training "
+                      f"lookup and were dropped.")
+                exit()
+                external_contexts = external_contexts[keep]
+                sample_indices = np.tile(np.arange(len(external_contexts)), args.OVERSAMPLE)
+            external_y_values = np.array([_rev[tuple(r.tolist())] for r in external_contexts])
+    else:
+        external_contexts = None
+        sample_indices = np.tile(np.arange(len(X)), args.OVERSAMPLE)
 
     if args.MODEL == "tabddpm":
 
         col_name = collection_list[0]
         is_endcap = "Endcap" in col_name
 
-        # Build z-snapping KDTree lookup from real data (only needed for endcap collections)
+        # Load z-snapping lookup from file (only needed for endcap collections)
         if is_endcap:
-            z_lookup = build_xy_z_lookup(
-                X_global,
-                FEATURE_INDICES_DICT["side"],
-                FEATURE_INDICES_DICT["layer"],
-                FEATURE_INDICES_DICT["r"],
-                FEATURE_INDICES_DICT["phi"],
-                FEATURE_INDICES_DICT["z"],
-            )
+            z_lookup_path = Path(configs["PATH_TO_DATA_DIR"]) / f"z_lookup_{col_name}.pkl"
+            with open(z_lookup_path, "rb") as _f:
+                z_lookup = pickle.load(_f)
 
         num_samples_total = len(sample_indices)
         # y condition (class label encoding the conditioning variables) per output slot
-        y_per_slot = y_values[sample_indices] if args.Y_MODE == "cond" else None
+        if args.Y_MODE == "cond":
+            y_per_slot = (external_y_values if external_contexts is not None else y_values)[sample_indices]
+        else:
+            y_per_slot = None
 
         # kwargs shared across all tabddpm_sample calls in the rejection loop
         tabddpm_kwargs = dict(
@@ -605,14 +662,15 @@ if args.EVAL:
         if np.any(unfilled):
             # Save the X context rows that never converged for external inspection / retry
             unfilled_ctx_path = samples_out_path.parent / (samples_out_path.stem + "_unfilled_contexts.npy")
-            np.save(unfilled_ctx_path, X[sample_indices[np.where(unfilled)[0]]])
+            _ctx_src = external_contexts if external_contexts is not None else X[:, -NUM_COND_INPUTS:]
+            np.save(unfilled_ctx_path, _ctx_src[sample_indices[np.where(unfilled)[0]]])
             print(f"WARNING: {unfilled.sum()} tabddpm slots still unfilled after {max_rounds} rounds. "
                   f"Unfilled contexts saved to {unfilled_ctx_path.name}. "
                   "Saving only the filled samples.", flush=True)
 
         # Compile per-round intermediate files into the final array, then clean up
         print("     Compiling intermediate round files...", flush=True)
-        output_samples = np.empty((num_samples_total, X.shape[1]), dtype=np.float32)
+        output_samples = np.empty((num_samples_total, NUM_FEATURES + NUM_COND_INPUTS), dtype=np.float32)
         for rnd_samples_path, rnd_indices_path in round_results:
             r_samp = np.load(rnd_samples_path)
             r_idx  = np.load(rnd_indices_path)
@@ -637,22 +695,17 @@ if args.EVAL:
         col_name = collection_list[0]
         is_endcap = "Endcap" in col_name
 
-        # Build z-snapping KDTree lookup from real data (only needed for endcap collections)
+        # Load z-snapping lookup from file (only needed for endcap collections)
         if is_endcap:
-            z_lookup = build_xy_z_lookup(
-                X_global,
-                FEATURE_INDICES_DICT["side"],
-                FEATURE_INDICES_DICT["layer"],
-                FEATURE_INDICES_DICT["r"],
-                FEATURE_INDICES_DICT["phi"],
-                FEATURE_INDICES_DICT["z"],
-            )
+            z_lookup_path = Path(configs["PATH_TO_DATA_DIR"]) / f"z_lookup_{col_name}.pkl"
+            with open(z_lookup_path, "rb") as _f:
+                z_lookup = pickle.load(_f)
 
         num_samples_total = len(sample_indices)
         sample_batch_size = 4096
 
-        # output_samples[i] holds one mask-passing sample for the context of X[sample_indices[i]]
-        output_samples = np.empty((num_samples_total, X.shape[1]), dtype=np.float32)
+        # output_samples[i] holds one mask-passing sample for the context of sample_indices[i]
+        output_samples = np.empty((num_samples_total, NUM_FEATURES + NUM_COND_INPUTS), dtype=np.float32)
         # unfilled[i] is True until slot i receives a mask-passing sample
         unfilled = np.ones(num_samples_total, dtype=bool)
 
@@ -670,11 +723,12 @@ if args.EVAL:
                     batch_out_idx = remaining[i:i+sample_batch_size]
                     nn = len(batch_out_idx)
 
-                    # Use the exact conditioning variables from X for each output slot
+                    # Use the exact conditioning variables for each output slot
                     if NUM_COND_INPUTS > 0:
-                        context_to_sample = torch.tensor(
-                            X[sample_indices[batch_out_idx], -NUM_COND_INPUTS:], dtype=torch.float32
-                        ).to(device)
+                        _ctx = (external_contexts[sample_indices[batch_out_idx]]
+                                if external_contexts is not None
+                                else X[sample_indices[batch_out_idx], -NUM_COND_INPUTS:])
+                        context_to_sample = torch.tensor(_ctx, dtype=torch.float32).to(device)
                     else:
                         context_to_sample = None
 
@@ -712,7 +766,8 @@ if args.EVAL:
         if np.any(unfilled):
             # Save the X context rows that never converged for external inspection / retry
             unfilled_ctx_path = samples_out_path.parent / (samples_out_path.stem + "_unfilled_contexts.npy")
-            np.save(unfilled_ctx_path, X[sample_indices[np.where(unfilled)[0]]])
+            _ctx_src = external_contexts if external_contexts is not None else X[:, -NUM_COND_INPUTS:]
+            np.save(unfilled_ctx_path, _ctx_src[sample_indices[np.where(unfilled)[0]]])
             print(f"WARNING: {unfilled.sum()} flow slots still unfilled after {max_rounds} rounds. "
                   f"Unfilled contexts saved to {unfilled_ctx_path.name}. "
                   "Saving only the filled samples.", flush=True)
@@ -733,13 +788,14 @@ if args.EVAL:
 
     print("     Making plots...")
 
-    fig_samp, axes_samp = plot_corner_hist_2d(samples, feature_labels=feature_labels, bins_dict=bins_dict, log_dims=log_vars, title= f"generated_{args.BASIS}",)
-    plt.savefig(f"{plots_dir}/corner_generated_{args.BASIS}_final")
-    plt.close()
+    if bins_dict:
+        fig_samp, axes_samp = plot_corner_hist_2d(samples, feature_labels=feature_labels, bins_dict=bins_dict, log_dims=log_vars, title= f"generated_{args.BASIS}",)
+        plt.savefig(f"{plots_dir}/corner_generated_{args.BASIS}_final")
+        plt.close()
 
-    fig_samp, axes_samp = plot_corner_hist_2d(samples_global, feature_labels=global_feature_labels, bins_dict=bins_dict, log_dims=log_vars, title= f"generated_global",)
-    plt.savefig(f"{plots_dir}/corner_generated_global_final")
-    plt.close()
+        fig_samp, axes_samp = plot_corner_hist_2d(samples_global, feature_labels=global_feature_labels, bins_dict=bins_dict, log_dims=log_vars, title= f"generated_global",)
+        plt.savefig(f"{plots_dir}/corner_generated_global_final")
+        plt.close()
 
     print("     Done making plots.")
             

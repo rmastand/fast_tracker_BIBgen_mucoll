@@ -18,3 +18,14 @@ FEATURE_INDICES_DICT:
 
 BIN_BOUND: 5
 NUM_BINS: 200
+
+
+
+system_id_dict:
+  "VertexBarrelCollection": 1
+  "VertexEndcapCollection": 2
+  "InnerTrackerBarrelCollection": 3
+  "InnerTrackerEndcapCollection": 4
+  "OuterTrackerBarrelCollection": 5
+  "OuterTrackerEndcapCollection": 6
+
