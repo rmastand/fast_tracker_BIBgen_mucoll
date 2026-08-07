@@ -339,12 +339,17 @@ if args.TRAIN:
         loss_history = pd.read_csv(Path(save_dir) / "loss.csv")
 
         for row in loss_history.itertuples(index=False):
-            wandb.log({
+            log_entry = {
                 "training_step": int(row.step),
                 "train/mloss": float(row.mloss),
                 "train/gloss": float(row.gloss),
                 "train/total": float(row.loss),
-            })
+            }
+            if not pd.isna(row.val_loss):
+                log_entry["val/mloss"] = float(row.val_mloss)
+                log_entry["val/gloss"] = float(row.val_gloss)
+                log_entry["val/total"] = float(row.val_loss)
+            wandb.log(log_entry)
 
     elif args.MODEL == "flow":
 
@@ -542,7 +547,7 @@ if args.EVAL:
             batch_size=args.SAMPLE_BATCH_SIZE,
             model_type="mlp",
             model_params=model_params,
-            model_path=str(Path(save_dir) / "model.pt"),
+            model_path=str(Path(save_dir) / "model_best.pt"),
             num_timesteps=args.NUM_TIMESTEPS,
             gaussian_loss_type="mse",
             scheduler=args.SCHEDULER,

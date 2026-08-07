@@ -9,21 +9,26 @@ import lib
 import pandas as pd
 
 class Trainer:
-    def __init__(self, diffusion, train_iter, lr, weight_decay, steps, device=torch.device('cuda:1')):
+    def __init__(self, diffusion, train_iter, lr, weight_decay, steps, device=torch.device('cuda:1'),
+                 val_loader=None, val_every=1000, parent_dir=None):
         self.diffusion = diffusion
         self.ema_model = deepcopy(self.diffusion._denoise_fn)
         for param in self.ema_model.parameters():
             param.detach_()
 
         self.train_iter = train_iter
+        self.val_loader = val_loader
         self.steps = steps
         self.init_lr = lr
         self.optimizer = torch.optim.AdamW(self.diffusion.parameters(), lr=lr, weight_decay=weight_decay)
         self.device = device
-        self.loss_history = pd.DataFrame(columns=['step', 'mloss', 'gloss', 'loss'])
+        self.loss_history = pd.DataFrame(columns=['step', 'mloss', 'gloss', 'loss', 'val_mloss', 'val_gloss', 'val_loss'])
         self.log_every = 100
         self.print_every = 500
         self.ema_every = 1000
+        self.val_every = val_every
+        self.parent_dir = parent_dir
+        self.best_val_loss = float('inf')
 
     def _anneal_lr(self, step):
         frac_done = step / self.steps
@@ -43,12 +48,34 @@ class Trainer:
 
         return loss_multi, loss_gauss
 
+    def _compute_val_loss(self):
+        self.diffusion.eval()
+        total_multi = 0.0
+        total_gauss = 0.0
+        total_count = 0
+        with torch.no_grad():
+            for x, y in self.val_loader:
+                x = x.to(self.device)
+                out_dict = {'y': y.long().to(self.device)}
+                loss_multi, loss_gauss = self.diffusion.mixed_loss(x, out_dict)
+                n = len(x)
+                total_multi += loss_multi.item() * n
+                total_gauss += loss_gauss.item() * n
+                total_count += n
+        self.diffusion.train()
+        val_mloss = np.around(total_multi / total_count, 4)
+        val_gloss = np.around(total_gauss / total_count, 4)
+        return val_mloss, val_gloss
+
     def run_loop(self):
         step = 0
         curr_loss_multi = 0.0
         curr_loss_gauss = 0.0
 
         curr_count = 0
+        val_mloss = float('nan')
+        val_gloss = float('nan')
+
         while step < self.steps:
             x, out_dict = next(self.train_iter)
             out_dict = {'y': out_dict}
@@ -63,9 +90,23 @@ class Trainer:
             if (step + 1) % self.log_every == 0:
                 mloss = np.around(curr_loss_multi / curr_count, 4)
                 gloss = np.around(curr_loss_gauss / curr_count, 4)
-                if (step + 1) % self.print_every == 0:
+
+                # Compute validation loss at val_every intervals
+                if self.val_loader is not None and (step + 1) % self.val_every == 0:
+                    val_mloss, val_gloss = self._compute_val_loss()
+                    val_total = val_mloss + val_gloss
+                    if val_total < self.best_val_loss:
+                        self.best_val_loss = val_total
+                        if self.parent_dir is not None:
+                            torch.save(
+                                self.diffusion._denoise_fn.state_dict(),
+                                os.path.join(self.parent_dir, 'model_best.pt')
+                            )
+                    print(f'Step {(step + 1)}/{self.steps} MLoss: {mloss} GLoss: {gloss} Sum: {mloss + gloss} | Val MLoss: {val_mloss} Val GLoss: {val_gloss} Val Sum: {val_total}')
+                elif (step + 1) % self.print_every == 0:
                     print(f'Step {(step + 1)}/{self.steps} MLoss: {mloss} GLoss: {gloss} Sum: {mloss + gloss}')
-                self.loss_history.loc[len(self.loss_history)] =[step + 1, mloss, gloss, mloss + gloss]
+
+                self.loss_history.loc[len(self.loss_history)] = [step + 1, mloss, gloss, mloss + gloss, val_mloss, val_gloss, val_mloss + val_gloss if not (np.isnan(val_mloss) or np.isnan(val_gloss)) else float('nan')]
                 curr_count = 0
                 curr_loss_gauss = 0.0
                 curr_loss_multi = 0.0
@@ -128,8 +169,7 @@ def train(
 
     # train_loader = lib.prepare_beton_loader(dataset, split='train', batch_size=batch_size)
     train_loader = lib.prepare_fast_dataloader(dataset, split='train', batch_size=batch_size)
-
-
+    val_loader = lib.prepare_fast_torch_dataloader(dataset, split='val', batch_size=batch_size)
 
     diffusion = GaussianMultinomialDiffusion(
         num_classes=K,
@@ -149,10 +189,18 @@ def train(
         lr=lr,
         weight_decay=weight_decay,
         steps=steps,
-        device=device
+        device=device,
+        val_loader=val_loader,
+        val_every=1000,
+        parent_dir=parent_dir,
     )
     trainer.run_loop()
 
     trainer.loss_history.to_csv(os.path.join(parent_dir, 'loss.csv'), index=False)
     torch.save(diffusion._denoise_fn.state_dict(), os.path.join(parent_dir, 'model.pt'))
     torch.save(trainer.ema_model.state_dict(), os.path.join(parent_dir, 'model_ema.pt'))
+
+    # If no validation checkpoint was saved (e.g. val_every never fired), fall back to final model
+    best_path = os.path.join(parent_dir, 'model_best.pt')
+    if not os.path.exists(best_path):
+        torch.save(diffusion._denoise_fn.state_dict(), best_path)
