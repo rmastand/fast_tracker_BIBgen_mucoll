@@ -74,6 +74,7 @@ parser.add_argument("--HIDDEN_FEATURES", type=str, default="32,32,32", help="Num
 parser.add_argument("--FREQS", type=int, default=3, help="Freqs for CNF")
 parser.add_argument("--BINS", type=int, default=16, help="Freqs for CNF")
 parser.add_argument("--DEGREE", type=int, default=3, help="Freqs for CNF")
+parser.add_argument("--SLOPE", type=float, default=0.001, help="Batch size")
 parser.add_argument("--POLYNOMIALS", type=int, default=4, help="Freqs for CNF")
 parser.add_argument("--PLOT_EPOCH_INTERVAL", type=int, default=50, help="Interval for plotting during training")
 
@@ -82,7 +83,7 @@ parser.add_argument("--PLOT_EPOCH_INTERVAL", type=int, default=50, help="Interva
 parser.add_argument("--STEPS", type=int, default=300000, help="Number of TabDDPM training steps")
 parser.add_argument("--WEIGHT_DECAY", type=float, default=0.0, help="TabDDPM optimizer weight decay")
 parser.add_argument("--NUM_TIMESTEPS", type=int, default=1000, help="Number of diffusion timesteps")
-parser.add_argument("--SAMPLE_BATCH_SIZE", type=int, default=4096*2, help="TabDDPM sampling batch size")
+parser.add_argument("--SAMPLE_BATCH_SIZE", type=int, default=8192, help="TabDDPM sampling batch size")
 parser.add_argument("--SCHEDULER", type=str, default="cosine", help="Diffusion noise scheduler")
 parser.add_argument("--D_LAYERS", type=str, default="4096,4096,4096,4096,4096,4096", help="TabDDPM MLP hidden layers")
 parser.add_argument("--DIM_T", type=int, default=2048, help="Diffusion timestep embedding dimension")
@@ -279,7 +280,7 @@ elif args.MODEL == "flow":
     elif args.ZUKO_ID == "MAF":
         flow = zuko.flows.MAF(NUM_FEATURES, NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features).to(device)
     elif args.ZUKO_ID == "NCSF":
-        flow = zuko.flows.NCSF(NUM_FEATURES, NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, bins=args.BINS).to(device)
+        flow = zuko.flows.NCSF(NUM_FEATURES, NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, bins=args.BINS, slope=args.SLOPE).to(device)
     elif args.ZUKO_ID == "SOSPF":
         flow = zuko.flows.SOSPF(NUM_FEATURES, NUM_COND_INPUTS, transforms=args.TRANSFORMS, hidden_features=hidden_features, degree=args.DEGREE, polynomials=args.POLYNOMIALS).to(device)
     elif args.ZUKO_ID == "UNAF":

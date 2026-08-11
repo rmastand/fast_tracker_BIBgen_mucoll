@@ -297,10 +297,10 @@ def load_in_data(
             # plt.show()
 
                 
-            feature_labels = ["log($E$) [Gev]", "$r$ [mm]", "$\phi$ (local)", "$z$ [mm]", "$t$ [s]", "system", "side", "layer", "module", "sensor"]
+            feature_labels = ["log($E$) [Gev]", "$r$ [mm]", "$\phi$ (local) [rad]", "$z$ [mm]", "$t$ [s]", "system", "side", "layer", "module", "sensor"]
 
         else:
-            feature_labels = ["log($E$) [Gev]", "$r$ [mm]", "$\phi$", "$z$ [mm]", "$t$ [s]", "system", "side", "layer", "module", "sensor"]
+            feature_labels = ["log($E$) [Gev]", "$r$ [mm]", "$\phi$ [rad]", "$z$ [mm]", "$t$ [s]", "system", "side", "layer", "module", "sensor"]
     else:
         feature_labels = ["log($E$) [Gev]", "$x$ [mm]", "$y$ [mm]", "$z$ [mm]", "$t$ [s]", "system", "side", "layer", "module", "sensor"]
 

@@ -41,7 +41,7 @@ with open(f"{args.CONFIGS_PATH}.yaml", "r") as f:
 
 BIN_BOUND = configs["BIN_BOUND"]
 NUM_BINS = configs["NUM_BINS"]
-ALL_COLLECTIONS =["InnerTrackerBarrelCollection"]
+ALL_COLLECTIONS =["OuterTrackerBarrelCollection"]
 FEATURE_ORDER = configs["FEATURE_ORDER"]
 FEATURE_INDICES_DICT = configs["FEATURE_INDICES_DICT"]
 PATH_TO_DATA_DIR = configs["PATH_TO_DATA_DIR"]
@@ -56,58 +56,39 @@ if args.MODEL == "flow_NCSF":
 
     if args.BASIS == "rphi":
 
-        PATHS_TO_SAMPLES = {
-            "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTBC_cond4/",
-            "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTEC_cond4/",
-            "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_ITBC_cond4/",
-            "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_ITEC_cond4/",
-            "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_VBC_cond4/",
-            "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_VEC_cond4/",
+        exit()
+
+        # PATHS_TO_SAMPLES = {
+        #     "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTBC_cond4/",
+        #     "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTEC_cond4/",
+        #     "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_ITBC_cond4/",
+        #     "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_ITEC_cond4/",
+        #     "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_VBC_cond4/",
+        #     "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_VEC_cond4/",
+        #                         }
+    elif args.BASIS == "local_phi":
+       PATHS_TO_SAMPLES = {
+                "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/flow_NCSF_bins8_local",
+                "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/flow_NCSF_bins8_local",
+                "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/flow_NCSF_bins8_local",
+                "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/flow_NCSF_bins8_local",
+                "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/flow_NCSF_bins8_local",
+                "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/flow_NCSF_bins8_local",
                                 }
-    elif args.BASIS == "local_phi":
-        PATHS_TO_SAMPLES = {
-            "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTBC_cond4_local/",
-            "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTEC_cond4_local/",
-            "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_ITBC_cond4_local/",
-            "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_ITEC_cond4_local/",
-            "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_VBC_cond4_local/",
-            "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_VEC_cond4_local/",
-                            }
-
-elif args.MODEL == "flow_NSF":
-
-    if args.BASIS == "rphi":
-
-        PATHS_TO_SAMPLES = {
-            "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_NSF_OTBC_cond4/",
-            "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_NSF_OTEC_cond4/",
-            "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_NSF_ITBC_cond4/",
-            "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_NSF_ITEC_cond4/",
-            "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_NSF_VBC_cond4/",
-            "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_NSF_VEC_cond4/",
-                            }
-    elif args.BASIS == "local_phi":
-        PATHS_TO_SAMPLES = {
-            "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_NSF_OTBC_cond4_local/",
-            "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_NSF_OTEC_cond4_local/",
-            "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_NSF_ITBC_cond4_local/",
-            "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_NSF_ITEC_cond4_local/",
-            "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_NSF_VBC_cond4_local/",
-            "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_NSF_VEC_cond4_local/",
-                            }
 
 
 elif args.MODEL == "tabddpm":
 
     if args.BASIS == "rphi":
-        PATHS_TO_SAMPLES = {
-            "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_OTBC_cond4/",
-            "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_OTEC_cond4/",
-            "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_ITBC_cond4/",
-            "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_ITEC_cond4/",
-            "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_VBC_cond4/",
-            "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_VEC_cond4/",
-                            }
+        exit()
+        # PATHS_TO_SAMPLES = {
+        #     "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_OTBC_cond4/",
+        #     "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_OTEC_cond4/",
+        #     "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_ITBC_cond4/",
+        #     "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_ITEC_cond4/",
+        #     "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_VBC_cond4/",
+        #     "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_VEC_cond4/",
+        #                     }
     elif args.BASIS == "local_phi":
         PATHS_TO_SAMPLES = {
             "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_OTBC_cond4_local/",
@@ -135,13 +116,14 @@ for i, col_name in enumerate(ALL_COLLECTIONS):
 
 
     try:
-        all_samples_dir[col_name] = np.load(f"{PATHS_TO_SAMPLES[col_name]}/generated_samples.npy")
+        all_samples_dir[col_name] = np.load(f"{PATHS_TO_SAMPLES[col_name]}_{col_name}_post_cellID_filtering.npy")
+
     except:
         print(f"Could not load generated samples for {col_name} from {PATHS_TO_SAMPLES[col_name]}/generated_samples.npy")
         # move on to next collection
         continue
 
-    assert len(X) == len(all_samples_dir[col_name]), f"Number of samples in {col_name} does not match between data and generated samples"
+    # len(X) == len(all_samples_dir[col_name]), f"Number of samples in {col_name} does not match between data and generated samples"
     feature_labels_dict[col_name] = feature_labels
     
     
@@ -241,65 +223,47 @@ for i, col_name in enumerate(ALL_COLLECTIONS):
     from matplotlib.ticker import NullFormatter
     lo_r = min(r_reg.min(), r_ano.min())
     hi_r = max(r_reg.max(), r_ano.max())
-    bins_r = np.linspace(125, 132.5, 200)
+    bins_r = np.linspace(1151, 1151.3, 200)
     fig, ax = plt.subplots()
     ax.hist(r_reg, bins=bins_r, density=True, histtype="step", linewidth=1.5, color="green", label="regular")
     ax.hist(r_ano, bins=bins_r, density=True, histtype="step", linewidth=1.5, color="red",   label=f"anomalous (top {100 - ANOMALY_PERCENTILE}%)")
     ax.set_yscale("log")
     ax.set_xlabel("$r$ [mm]", fontsize=14)
     ax.set_ylabel("Density", fontsize=14)
-    ax.set_xlim(125, 132.5)
+    ax.set_xlim(1151.08, 1151.3)
     ax.tick_params(labelsize=10)
     ax.legend(frameon=False, fontsize=12)
     plt.tight_layout()
     plt.savefig(f"{args.PLOTS_DIR}/anomaly_r_{col_name}.pdf", bbox_inches="tight", dpi=300)
     plt.close()
 
-    # Plot 3: z histogram (density, log y)
-    from matplotlib.ticker import NullFormatter
-    lo_z = min(z_reg.min(), z_ano.min())
-    hi_z = max(z_reg.max(), z_ano.max())
-    bins_z = np.linspace(100, 150, 200)
-    fig, ax = plt.subplots()
-    ax.hist(z_reg, bins=bins_z, density=True, histtype="step", linewidth=1.5, color="green", label="regular")
-    ax.hist(z_ano, bins=bins_z, density=True, histtype="step", linewidth=1.5, color="red",   label=f"anomalous (top {100 - ANOMALY_PERCENTILE}%)")
-    ax.set_yscale("log")
-    ax.set_xlabel("$z$ [mm]", fontsize=14)
-    ax.set_ylabel("Density", fontsize=14)
-    ax.set_xlim(100, 150)
-    ax.tick_params(labelsize=10)
-    ax.legend(frameon=False, fontsize=12)
-    plt.tight_layout()
-    plt.savefig(f"{args.PLOTS_DIR}/anomaly_z_{col_name}.pdf", bbox_inches="tight", dpi=300)
+    # Plot 3: all 5 feature histograms
+    n_feats = samples.shape[1]
+    fig, axes = plt.subplots(1, n_feats, figsize=(4 * n_feats, 4))
+    for fi in range(n_feats):
+        vals_reg = samples[~is_anomalous, fi]
+        vals_ano = samples[ is_anomalous, fi]
+        lo_f = min(vals_reg.min(), vals_ano.min())
+        hi_f = max(vals_reg.max(), vals_ano.max())
+        bins_fi = np.linspace(lo_f, hi_f, 80)
+        axes[fi].hist(vals_reg, bins=bins_fi, density=True, histtype="step", linewidth=1.5, color="green", label="regular")
+        axes[fi].hist(vals_ano, bins=bins_fi, density=True, histtype="step", linewidth=1.5, color="red",   label="anomalous")
+        axes[fi].set_yscale("log")
+        label = feat_labels[fi] if fi < len(feat_labels) else f"feat {fi}"
+        axes[fi].set_xlabel(label, fontsize=14)
+        axes[fi].tick_params(labelsize=12)
+        if fi == 0:
+            axes[fi].set_ylabel("Density", fontsize=14)
+        else:
+            axes[fi].yaxis.set_tick_params(labelleft=False)
+            axes[fi].yaxis.set_ticklabels([])
+            axes[fi].yaxis.set_major_formatter(NullFormatter())
+            axes[fi].yaxis.set_minor_formatter(NullFormatter())
+        if fi == n_feats - 1:
+            axes[fi].legend(frameon=False, fontsize=12)
+    plt.subplots_adjust(wspace=0.05)
+    plt.savefig(f"{args.PLOTS_DIR}/anomaly_all_feats_{col_name}.pdf", bbox_inches="tight", dpi=300)
     plt.close()
-
-    # # Plot 3: all 5 feature histograms
-    # n_feats = samples.shape[1]
-    # fig, axes = plt.subplots(1, n_feats, figsize=(4 * n_feats, 4))
-    # for fi in range(n_feats):
-    #     vals_reg = samples[~is_anomalous, fi]
-    #     vals_ano = samples[ is_anomalous, fi]
-    #     lo_f = min(vals_reg.min(), vals_ano.min())
-    #     hi_f = max(vals_reg.max(), vals_ano.max())
-    #     bins_fi = np.linspace(lo_f, hi_f, 80)
-    #     axes[fi].hist(vals_reg, bins=bins_fi, density=True, histtype="step", linewidth=1.5, color="green", label="regular")
-    #     axes[fi].hist(vals_ano, bins=bins_fi, density=True, histtype="step", linewidth=1.5, color="red",   label="anomalous")
-    #     axes[fi].set_yscale("log")
-    #     label = feat_labels[fi] if fi < len(feat_labels) else f"feat {fi}"
-    #     axes[fi].set_xlabel(label, fontsize=14)
-    #     axes[fi].tick_params(labelsize=12)
-    #     if fi == 0:
-    #         axes[fi].set_ylabel("Density", fontsize=14)
-    #     else:
-    #         axes[fi].yaxis.set_tick_params(labelleft=False)
-    #         axes[fi].yaxis.set_ticklabels([])
-    #         axes[fi].yaxis.set_major_formatter(NullFormatter())
-    #         axes[fi].yaxis.set_minor_formatter(NullFormatter())
-    #     if fi == n_feats - 1:
-    #         axes[fi].legend(frameon=False, fontsize=12)
-    # plt.subplots_adjust(wspace=0.05)
-    # plt.savefig(f"{args.PLOTS_DIR}/anomaly_all_feats_{col_name}.pdf", bbox_inches="tight", dpi=300)
-    # plt.close()
 
     print(f"Anomaly plots saved for {col_name}.")
 
