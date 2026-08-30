@@ -1,3 +1,5 @@
+# https://github.com/madbaron/SteeringMacros/blob/36990767fe34c2c783505a7ec5352a9de30ad2be/k4Reco/steer_reco.py
+# 
 from Configurables import ApplicationMgr
 from Gaudi.Configuration import *
 
@@ -1028,58 +1030,58 @@ OverlayIP.Parameters = {
 algList.append(MyAIDAProcessor)
 algList.append(EventNumber)
 algList.append(InitDD4hep)
-if the_args.enableBIB:
-    algList.append(OverlayMIX)
-if the_args.enableIP:
-    algList.append(OverlayIP)
+# if the_args.enableBIB:
+#     algList.append(OverlayMIX)
+# if the_args.enableIP:
+#     algList.append(OverlayIP)
 algList.append(VXDBarrelDigitiser)
 algList.append(VXDEndcapDigitiser)
 algList.append(InnerPlanarDigiProcessor)
 algList.append(InnerEndcapPlanarDigiProcessor)
 algList.append(OuterPlanarDigiProcessor)
 algList.append(OuterEndcapPlanarDigiProcessor)
-if not the_args.skipTrackerConing:
-    algList.append(VXDBarrelConer)
-    algList.append(VXDEndcapConer)
-    algList.append(InnerPlanarConer)
-    algList.append(InnerEndcapConer)
-    algList.append(OuterPlanarConer)
-    algList.append(OuterEndcapConer)
-if not the_args.trackerOnly:
-    algList.append(MyEcalBarrelDigi)
-    algList.append(MyEcalBarrelReco)
-    algList.append(MyEcalEndcapDigi)
-    algList.append(MyEcalEndcapReco)
-    algList.append(MyHcalBarrelDigi)
-    algList.append(MyHcalBarrelReco)
-    algList.append(MyHcalEndcapDigi)
-    algList.append(MyHcalEndcapReco)
-    algList.append(MyEcalBarrelConer)
-    algList.append(MyEcalEndcapConer)
-    algList.append(MyHcalBarrelConer)
-    algList.append(MyHcalEndcapConer)
-    algList.append(MyEcalBarrelSelector)
-    algList.append(MyEcalEndcapSelector)
-    algList.append(MyHcalBarrelSelector)
-    algList.append(MyHcalEndcapSelector)
-    algList.append(MyDDSimpleMuonDigi)
+# if not the_args.skipTrackerConing:
+#     algList.append(VXDBarrelConer)
+#     algList.append(VXDEndcapConer)
+#     algList.append(InnerPlanarConer)
+#     algList.append(InnerEndcapConer)
+#     algList.append(OuterPlanarConer)
+#     algList.append(OuterEndcapConer)
+# if not the_args.trackerOnly:
+#     algList.append(MyEcalBarrelDigi)
+#     algList.append(MyEcalBarrelReco)
+#     algList.append(MyEcalEndcapDigi)
+#     algList.append(MyEcalEndcapReco)
+#     algList.append(MyHcalBarrelDigi)
+#     algList.append(MyHcalBarrelReco)
+#     algList.append(MyHcalEndcapDigi)
+#     algList.append(MyHcalEndcapReco)
+#     algList.append(MyEcalBarrelConer)
+#     algList.append(MyEcalEndcapConer)
+#     algList.append(MyHcalBarrelConer)
+#     algList.append(MyHcalEndcapConer)
+#     algList.append(MyEcalBarrelSelector)
+#     algList.append(MyEcalEndcapSelector)
+#     algList.append(MyHcalBarrelSelector)
+#     algList.append(MyHcalEndcapSelector)
+#     algList.append(MyDDSimpleMuonDigi)
 if not the_args.skipReco:
     algList.append(CKFTracking)
     algList.append(TrackDeduper)
-    if not the_args.skipTruth:
-        algList.append(MyTrackTruth)
+    # if not the_args.skipTruth:
+    #     algList.append(MyTrackTruth)
     algList.append(MyTrackSelectorHoles)
     algList.append(Refit)
     algList.append(MyTrackSelector)
-    if not the_args.skipTruth:
-        algList.append(MyTrackTruthSelected)
-    if not the_args.trackerOnly:
-        algList.append(DDMarlinPandora)
-        algList.append(FastJetProcessor)
-        algList.append(ValenciaJetProcessor)
-        algList.append(TrueMCintoRecoForJets)
-        algList.append(TruthFastJetProcessor)
-        algList.append(TruthValenciaJetProcessor)
+    # if not the_args.skipTruth:
+    #     algList.append(MyTrackTruthSelected)
+    # if not the_args.trackerOnly:
+    #     algList.append(DDMarlinPandora)
+    #     algList.append(FastJetProcessor)
+    #     algList.append(ValenciaJetProcessor)
+    #     algList.append(TrueMCintoRecoForJets)
+    #     algList.append(TruthFastJetProcessor)
+    #     algList.append(TruthValenciaJetProcessor)
 algList.append(Output_REC)
 
 ApplicationMgr(TopAlg=algList,
