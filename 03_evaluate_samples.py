@@ -116,12 +116,12 @@ elif args.MODEL == "tabddpm":
         #                     }
     elif args.BASIS == "local_phi":
         PATHS_TO_SAMPLES = {
-            "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/diff_large_local",
-            "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/diff_large_local",
-            "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/diff_large_local",
-            "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/diff_large_local",
-            "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/diff_large_local",
-            "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/diff_large_local",
+            "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/diff_local",
+            "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/diff_local",
+            "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/diff_local",
+            "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/diff_local",
+            "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/diff_local",
+            "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/diff_local",
                             }
 
 

@@ -41,7 +41,7 @@ with open(f"{args.CONFIGS_PATH}.yaml", "r") as f:
 
 BIN_BOUND = configs["BIN_BOUND"]
 NUM_BINS = configs["NUM_BINS"]
-ALL_COLLECTIONS =["OuterTrackerBarrelCollection"]
+ALL_COLLECTIONS =["InnerTrackerBarrelCollection"]
 FEATURE_ORDER = configs["FEATURE_ORDER"]
 FEATURE_INDICES_DICT = configs["FEATURE_INDICES_DICT"]
 PATH_TO_DATA_DIR = configs["PATH_TO_DATA_DIR"]
@@ -223,14 +223,15 @@ for i, col_name in enumerate(ALL_COLLECTIONS):
     from matplotlib.ticker import NullFormatter
     lo_r = min(r_reg.min(), r_ano.min())
     hi_r = max(r_reg.max(), r_ano.max())
-    bins_r = np.linspace(1151, 1151.3, 200)
-    fig, ax = plt.subplots()
+    #bins_r = np.linspace(1151, 1151.3, 200)
+    bins_r = np.linspace(553.9, 556.8, 1000)
+    fig, ax = plt.subplots(figsize=(12,4))
     ax.hist(r_reg, bins=bins_r, density=True, histtype="step", linewidth=1.5, color="green", label="regular")
     ax.hist(r_ano, bins=bins_r, density=True, histtype="step", linewidth=1.5, color="red",   label=f"anomalous (top {100 - ANOMALY_PERCENTILE}%)")
     ax.set_yscale("log")
     ax.set_xlabel("$r$ [mm]", fontsize=14)
     ax.set_ylabel("Density", fontsize=14)
-    ax.set_xlim(1151.08, 1151.3)
+    ax.set_xlim(553.9, 556.8)
     ax.tick_params(labelsize=10)
     ax.legend(frameon=False, fontsize=12)
     plt.tight_layout()

@@ -481,7 +481,7 @@ def _run_eval_suite_BDTs_inner(
                                                 "configs/bdt.yml",
                                                 model_type="bdt",
                                                 plot_losses=False,
-                                                device="cuda",
+                                                device=device,
                                                 val_size = 0.2, 
                                                 plot_dir=plot_dir,
                                                 verbose=True

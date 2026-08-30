@@ -572,7 +572,11 @@ if args.EVAL:
         # unfilled[i] is True until slot i receives a mask-passing sample
         unfilled = np.ones(num_samples_total, dtype=bool)
         # Save each round's results to disk so large arrays can be freed between rounds
-        intermediate_dir = Path(save_dir) / "sampling_intermediates"
+        intermediate_dir = Path(save_dir) / (
+            f"sampling_intermediates_{context_idx}" if args.CONTEXT_FILE is not None else "sampling_intermediates"
+        )
+
+             
         intermediate_dir.mkdir(exist_ok=True)
         round_results = []  # list of (samples_path, indices_path)
 
@@ -591,8 +595,13 @@ if args.EVAL:
             # object, and training dataset are fully released (process exit) before
             # the next round.  A direct call leaves PyTorch reference cycles alive
             # across rounds, causing inter-round OOM.
+            # Use a per-round output dir so concurrent SLURM jobs (sharing save_dir)
+            # don't overwrite each other's X_num_train.npy / y_train.npy.
+            rnd_output_dir = intermediate_dir / f"round_{rnd}_output"
+            rnd_output_dir.mkdir(exist_ok=True)
             call_kwargs = {
                 **tabddpm_kwargs,
+                "parent_dir": str(rnd_output_dir),
                 "num_samples": n_rem,
                 "seed": sample_seed + rnd,
                 "device": str(tabddpm_kwargs["device"]),  # str so pickle doesn't need torch pre-imported
@@ -621,8 +630,8 @@ if args.EVAL:
             if y_path is not None:
                 y_path.unlink()
 
-            X_gen = np.load(Path(save_dir) / "X_num_train.npy").astype(np.float32)
-            y_gen = np.load(Path(save_dir) / "y_train.npy").astype(np.int64)
+            X_gen = np.load(rnd_output_dir / "X_num_train.npy").astype(np.float32)
+            y_gen = np.load(rnd_output_dir / "y_train.npy").astype(np.int64)
 
             if args.Y_MODE == "none":
                 loc_samples = X_gen
