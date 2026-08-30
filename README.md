@@ -30,17 +30,19 @@ Before running any of the scripts in this repository, you'll want to make a vers
 
 ### Track fitting
 
+The next set of scripts need to be run on a machine with the muon collider software image available. Details of how to access the image are [here](https://mcd-wiki.web.cern.ch/software/tutorials/fermilab2024/)
+
+apptainer run \
+  -B /scratch:/scratch \
+  -B /ospool/uc-shared/project/muoncollider \
+  -B /ospool/uc-shared/project/futurecolliders \
+  -B /ospool/uc-shared/public/futurecolliders \
+  /cvmfs/unpacked.cern.ch/ghcr.io/muoncollidersoft/mucoll-sim-ubuntu24:v2.11-amd64
 
 
-## Samples -> LCIO files.
+All of the scripts are in the `osg` folder on this repository. We have compiled them into a helpful bash script `osg/run_osg.sh`, which runs 2 commands:
+1. `numpy_to_lcio.py`:
+2. `steer_reco.py`:
+3. steer_BIBtracking`:
 
-
-
-
-1. run `assign_cell_ID.ipynb`
-
-ON OSG
-
-2. run `numpy_to_lcio.py`
-3. Run digitization and reconstruction with `k4run /path/to/SteeringMacros/k4Reco/steer_reco.py --code /path/to/code --data /path/to/data --inputFile /path/to/output_flow.slcio  --outputFile /path/to/output/file  --skipTrackerConing --trackerOnly --forceSurface --skipTruth`
-4. Make summary track plots with `compare_tracks.py` (written by Mark Larson)
+Finally, run `compare_tracsk.py` to make the plots (thank you to Mark Larson for writing the initial version of this script)
