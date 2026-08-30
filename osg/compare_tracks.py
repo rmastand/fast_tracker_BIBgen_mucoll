@@ -5,7 +5,12 @@ Edit TRACK_SETS below: each entry is (label, [file, ...]).
 Add or remove entries freely — the rest of the script adapts automatically.
 """
 import os
+import glob
 import resource
+import gc  # CHANGE: added so we can explicitly free LCIO reader/event memory after each file.
+import sys  # CHANGE: added so the same script can run in parent mode or one-file worker mode.
+import subprocess  # CHANGE: added so the parent can launch one fresh Python process per SLCIO file.
+import tempfile  # CHANGE: added so worker .npz histogram files can be written to a temporary output directory.
 from collections import defaultdict
 from math import atan, log, tan, pi
 
@@ -16,28 +21,58 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import pyLCIO
 from pyLCIO import IOIMPL, EVENT, UTIL
-
+DPI = 300
+plt.style.use("science.mplstyle")
 # ── User configuration ─────────────────────────────────────────────────────
 
-TRACK_COLLECTION = "SiTracks"
-OUTPUT_DIR       = "/scratch/larsonma/MLBibComparison"
-BFIELD           = 5.0   # Tesla
+TRACK_COLLECTIONS = ["SelectedTracks", "SiTracksDeduped"] #  ["SelectedTracks", "SiTracksDeduped"]
+OUTPUT_DIR        = "/scratch/rrm39/slcio"
+BFIELD            = 5.0   # Tesla
+FILE_SUFFIX       = "diff"    # appended before .pdf, e.g. "_v2"
+RATIO_REF         = "Full Simulation"  # denominator label for the ratio panel
 
 # Each entry: (label, [list of .slcio files])
 TRACK_SETS = [
-    ("ML BIB", [
-        "/ospool/uc-shared/project/futurecolliders/brosser/lcio/ml_bib_reco_output_tenpercent.slcio",
+
+   
+
+
+    ("Full Simulation", [
+        [ 
+            f"/scratch/rrm39/v7_reco/slcio/output_sim_v7_nugun_0_50_reco{label}_selected_0_30.slcio",
+            f"/scratch/rrm39/v7_reco/slcio/output_sim_v7_nugun_0_50_reco{label}_selected_30_70.slcio",
+            f"/scratch/rrm39/v7_reco/slcio/output_sim_v7_nugun_0_50_reco{label}_selected_70_110.slcio",
+            f"/scratch/rrm39/v7_reco/slcio/output_sim_v7_nugun_0_50_reco{label}_selected_110_150.slcio",
+            f"/scratch/rrm39/v7_reco/slcio/output_sim_v7_nugun_0_50_reco{label}_selected_150_180.slcio",
+        ]
+        for label in ["", "_1", "_10", "_11", "_12", "_13", "_14", "_15", "_16", "_17"]
     ]),
-    ("ML BIB Samples from Shiyu", [
-        "/scratch/rrm39/shared/output_reco_shiyu.slcio",
+
+     
+
+
+    ("GenBIB-Diff", [
+        [ 
+            f"/scratch/rrm39/v7_reco/slcio/output_diff_local_reco{label}{'_reco' if label else ''}_selected_0_30.slcio",
+            f"/scratch/rrm39/v7_reco/slcio/output_diff_local_reco{label}{'_reco' if label else ''}_selected_30_70.slcio",
+            f"/scratch/rrm39/v7_reco/slcio/output_diff_local_reco{label}{'_reco' if label else ''}_selected_70_110.slcio",
+            f"/scratch/rrm39/v7_reco/slcio/output_diff_local_reco{label}{'_reco' if label else ''}_selected_110_150.slcio",
+            f"/scratch/rrm39/v7_reco/slcio/output_diff_local_reco{label}{'_reco' if label else ''}_selected_150_180.slcio",
+        ]
+                for label in ["", "_1", "_10", "_11", "_12", "_13", "_14", "_15", "_16", "_17"]
     ]),
-    ("Sim BIB", [
-        "/ospool/uc-shared/project/futurecolliders/data/fmeloni/DataMuC_MAIA_v0/v8/special/nuGun_filtered_0_30.slcio",
-        "/ospool/uc-shared/project/futurecolliders/data/fmeloni/DataMuC_MAIA_v0/v8/special/nuGun_filtered_30_70.slcio",
-        "/ospool/uc-shared/project/futurecolliders/data/fmeloni/DataMuC_MAIA_v0/v8/special/nuGun_filtered_70_110.slcio",
-        "/ospool/uc-shared/project/futurecolliders/data/fmeloni/DataMuC_MAIA_v0/v8/special/nuGun_filtered_110_150.slcio",
-        "/ospool/uc-shared/project/futurecolliders/data/fmeloni/DataMuC_MAIA_v0/v8/special/nuGun_filtered_150_180.slcio",
-    ]),
+
+    ("GenBIB-Flow", [
+                [
+                    f"/scratch/rrm39/v7_reco/slcio/output_flow_NCSF_bins8_local_reco{label}{'_reco' if label else ''}_selected_0_30.slcio",
+                    f"/scratch/rrm39/v7_reco/slcio/output_flow_NCSF_bins8_local_reco{label}{'_reco' if label else ''}_selected_30_70.slcio",
+                    f"/scratch/rrm39/v7_reco/slcio/output_flow_NCSF_bins8_local_reco{label}{'_reco' if label else ''}_selected_70_110.slcio",
+                    f"/scratch/rrm39/v7_reco/slcio/output_flow_NCSF_bins8_local_reco{label}{'_reco' if label else ''}_selected_110_150.slcio",
+                    f"/scratch/rrm39/v7_reco/slcio/output_flow_NCSF_bins8_local_reco{label}{'_reco' if label else ''}_selected_150_180.slcio",
+                ]
+                   for label in ["", "_1", "_10", "_11", "_12", "_13", "_14", "_15", "_16", "_17"]
+            ]),
+
 ]
 
 # ── Constants ──────────────────────────────────────────────────────────────
@@ -59,6 +94,28 @@ SYS_TO_KEY = {
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+# (key, bins, yunit, xlabel, title, xscale, yscale)
+# Output filename is generated at plot time as  {key}__{safe_collection}.pdf
+PLOT_SPECS = [
+    # ── subdetector hit counts ──────────────────────────────────────────────
+    ("vxd_barrel_nhits", np.arange(0, 9) - 0.5,     "hit",  "Hits per Track",        "Vertex Barrel Hits per Track",        "linear", "linear"),
+    ("vxd_endcap_nhits", np.arange(0, 9) - 0.5,     "hit",  "Hits per Track",        "Vertex Endcap Hits per Track",        "linear", "linear"),
+    ("it_barrel_nhits",  np.arange(0, 6) - 0.5,     "hit",  "Hits per Track",        "Inner Tracker Barrel Hits per Track", "linear", "linear"),
+    ("it_endcap_nhits",  np.arange(0, 9) - 0.5,     "hit",  "Hits per Track",        "Inner Tracker Endcap Hits per Track", "linear", "linear"),
+    ("ot_barrel_nhits",  np.arange(0, 5) - 0.5,     "hit",  "Hits per Track",        "Outer Tracker Barrel Hits per Track", "linear", "linear"),
+    ("ot_endcap_nhits",  np.arange(0, 6) - 0.5,     "hit",  "Hits per Track",        "Outer Tracker Endcap Hits per Track", "linear", "linear"),
+    # ── totals & track parameters ───────────────────────────────────────────
+    ("total_nhits",      np.arange(0, 25) - 0.5,    "hit",  "Total hits",              "Total Hits per Track",  "linear", "linear"),
+    ("eta",              np.linspace(-3, 3, 61),      "",     "Track $\\eta$",           "Track $\\eta$",         "linear", "linear"),
+    ("phi",              np.linspace(-pi, pi, 65),   "rad",  "Track $\\phi$ [rad]",     "Track $\\phi$",         "linear", "linear"),
+    ("chi2_reduced",     np.linspace(0, 5, 6),        "",     "$\\chi^2/Ndf$",           "Track $\\chi^2/Ndf$",   "linear", "linear"),
+    ("d0",               np.linspace(-5, 5, 51),     "mm",   "$d_0$ [mm]",              "Track $d_0$",           "linear", "linear"),
+    ("z0",               np.linspace(-25, 25, 101),  "mm",   "$z_0$ [mm]",              "Track $z_0$",           "linear", "linear"),
+    ("pt",               np.logspace(-1, 4, 61),     "GeV",  "Track $p_T$ [GeV]",       "Track $p_T$",           "log",    "log"),
+]
+
+BINS_BY_KEY = {key: bins for key, bins, _, _, _, _, _ in PLOT_SPECS}
+
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 def eta_from_tanl(tanl):
@@ -77,24 +134,59 @@ def get_encoding(event):
     return None
 
 
-def collect_tracks(file_list, label):
-    """Loop over all files and events; return (track_arrays, layer_hits).
+# CHANGE: added helper to fill one histogram bin without storing the original value.
+def fill_hist(hist_counts, key, value):
+    """Increment the streaming histogram for one value."""
+    if not np.isfinite(value):
+        return
+
+    bins = BINS_BY_KEY[key]
+    ibin = np.searchsorted(bins, value, side="right") - 1
+
+    # CHANGE: match np.histogram/matplotlib behavior by including the right edge of the last bin.
+    if ibin == len(bins) - 1 and value == bins[-1]:
+        ibin = len(bins) - 2
+
+    # CHANGE: values outside the requested plotting range are ignored, just like hist(..., bins=bins).
+    if 0 <= ibin < len(hist_counts[key]):
+        hist_counts[key][ibin] += 1.0
+
+
+# CHANGE: added helper for an approximate median from the already-filled pT histogram.
+def hist_median(counts, bins):
+    """Approximate the median using the streaming histogram bins."""
+    total = np.sum(counts)
+    if total <= 0:
+        return np.nan
+
+    cdf = np.cumsum(counts)
+    ibin = np.searchsorted(cdf, 0.5 * total, side="left")
+    ibin = min(max(ibin, 0), len(counts) - 1)
+
+    # CHANGE: use geometric bin center for log-spaced pT bins; arithmetic center otherwise.
+    if np.all(bins > 0):
+        return np.sqrt(bins[ibin] * bins[ibin + 1])
+    return 0.5 * (bins[ibin] + bins[ibin + 1])
+
+
+def collect_tracks(file_list, label, track_collection):
+    """Loop over all files and events; return (track_histograms, layer_hits).
 
     layer_hits: {sys_id: {layer: total_hit_count_across_all_tracks}}
     Divide by n_tracks to get average hits per track per layer.
     """
-    arrays = {
-        "vxd_barrel_nhits": [], "vxd_endcap_nhits": [],
-        "it_barrel_nhits":  [], "it_endcap_nhits":  [],
-        "ot_barrel_nhits":  [], "ot_endcap_nhits":  [],
-        "total_nhits":  [],
-        "eta":          [],
-        "phi":          [],
-        "chi2_reduced": [],
-        "d0":           [],
-        "z0":           [],
-        "pt":           [],
+    data = {
+        key: np.zeros(len(bins) - 1, dtype=np.float64)
+        for key, bins, _, _, _, _, _ in PLOT_SPECS
     }
+
+    # CHANGE: keep the total number of accepted tracks explicitly because arrays are now histograms.
+    data["n_tracks"] = 0
+
+    # CHANGE: keep finite pT summary stats without storing every pT value.
+    data["pt_sum"] = 0.0
+    data["pt_count"] = 0
+
     layer_hits = {sys_id: defaultdict(int) for sys_id in SYS_TO_KEY}
 
     for fname in file_list:
@@ -103,194 +195,368 @@ def collect_tracks(file_list, label):
         reader = pyLCIO.IOIMPL.LCFactory.getInstance().createLCReader()
         reader.open(fname)
 
-        for ievt, event in enumerate(reader):
-            if ievt % 500 == 0:
-                rss_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
-                print(f"  [{label}] event {ievt}, tracks so far: {len(arrays['total_nhits'])}, RSS: {rss_mb:.0f} MB")
-            encoding = get_encoding(event)
-            if encoding is None:
-                print(f"  event {ievt}: no hit collection found, skipping")
-                continue
-            decoder = UTIL.BitField64(encoding)
+        # CHANGE: use try/finally so the LCIO reader is closed even if a file/event has a problem.
+        try:
+            for ievt, event in enumerate(reader):
+                if ievt % 500 == 0:
+                    rss_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+                    print(f"  [{label}] event {ievt}, tracks so far: {data['n_tracks']}, RSS: {rss_mb:.0f} MB")
+                encoding = get_encoding(event)
+                if encoding is None:
+                    print(f"  event {ievt}: no hit collection found, skipping")
+                    continue
+                decoder = UTIL.BitField64(encoding)
 
-            try:
-                track_col = event.getCollection(TRACK_COLLECTION)
-            except Exception:
-                print(f"  event {ievt}: '{TRACK_COLLECTION}' not found, skipping")
-                continue
-
-            for track in track_col:
-                ndf = track.getNdf()
-                if ndf <= 0:
+                try:
+                    track_col = event.getCollection(track_collection)
+                except Exception:
+                    print(f"  event {ievt}: '{track_collection}' not found, skipping")
                     continue
 
-                counters = {k: 0 for k in SYS_TO_KEY.values()}
-                for hit in track.getTrackerHits():
-                    decoder.setValue(int(hit.getCellID0()))
-                    sys = decoder["system"].value()
-                    if sys in SYS_TO_KEY:
-                        counters[SYS_TO_KEY[sys]] += 1
-                        layer_hits[sys][decoder["layer"].value()] += 1
+                for track in track_col:
+                    ndf = track.getNdf()
+                    if ndf <= 0:
+                        continue
 
-                for k, v in counters.items():
-                    arrays[k].append(v)
-                arrays["total_nhits"].append(sum(counters.values()))
-                arrays["eta"].append(eta_from_tanl(track.getTanLambda()))
-                arrays["phi"].append(track.getPhi())
-                arrays["chi2_reduced"].append(track.getChi2() / float(ndf))
-                arrays["d0"].append(track.getD0())
-                arrays["z0"].append(track.getZ0())
-                omega = track.getOmega()
-                arrays["pt"].append(0.3 * BFIELD / (abs(omega) * 1e3) if omega != 0.0 else np.nan)
+                    counters = {k: 0 for k in SYS_TO_KEY.values()}
+                    for hit in track.getTrackerHits():
+                        decoder.setValue(int(hit.getCellID0()))
+                        sys = decoder["system"].value()
+                        if sys in SYS_TO_KEY:
+                            counters[SYS_TO_KEY[sys]] += 1
+                            layer_hits[sys][decoder["layer"].value()] += 1
 
-    return {k: np.array(v) for k, v in arrays.items()}, layer_hits
+                    # CHANGE: fill histograms immediately instead of appending values to lists.
+                    for k, v in counters.items():
+                        fill_hist(data, k, v)
+
+                    total_nhits = sum(counters.values())
+                    eta = eta_from_tanl(track.getTanLambda())
+                    phi = track.getPhi()
+                    chi2_reduced = track.getChi2() / float(ndf)
+                    d0 = track.getD0()
+                    z0 = track.getZ0()
+                    omega = track.getOmega()
+                    pt = 0.3 * BFIELD / (abs(omega) * 1e3) if omega != 0.0 else np.nan
+
+                    fill_hist(data, "total_nhits", total_nhits)
+                    fill_hist(data, "eta", eta)
+                    fill_hist(data, "phi", phi)
+                    fill_hist(data, "chi2_reduced", chi2_reduced)
+                    fill_hist(data, "d0", d0)
+                    fill_hist(data, "z0", z0)
+                    fill_hist(data, "pt", pt)
+
+                    # CHANGE: count accepted tracks directly since total_nhits is no longer a track array.
+                    data["n_tracks"] += 1
+
+                    # CHANGE: update pT mean stats without storing the full pT array.
+                    if np.isfinite(pt):
+                        data["pt_sum"] += pt
+                        data["pt_count"] += 1
+        finally:
+            # CHANGE: close and delete the reader after every file to avoid retaining LCIO buffers.
+            try:
+                reader.close()
+            except Exception:
+                pass
+            del reader
+            gc.collect()
+
+    return data, layer_hits
+
+
+# ── Subprocess helpers ─────────────────────────────────────────────────────
+
+def save_worker_output(path, data, layer_hits):
+    save_dict = {}
+
+    for key, value in data.items():
+        save_dict[f"data__{key}"] = np.asarray(value)
+
+    for sys_id, layer_dict in layer_hits.items():
+        layers = np.array(list(layer_dict.keys()), dtype=np.int64)
+        counts = np.array(list(layer_dict.values()), dtype=np.float64)
+        save_dict[f"layer__{sys_id}__layers"] = layers
+        save_dict[f"layer__{sys_id}__counts"] = counts
+
+    np.savez(path, **save_dict)
+
+
+def load_worker_output(path):
+    z = np.load(path, allow_pickle=False)
+
+    data = {}
+    for key in z.files:
+        if key.startswith("data__"):
+            clean_key = key.replace("data__", "", 1)
+            value = z[key]
+            data[clean_key] = value.item() if value.shape == () else value
+
+    layer_hits = {sys_id: defaultdict(int) for sys_id in SYS_TO_KEY}
+    for sys_id in SYS_TO_KEY:
+        layer_key = f"layer__{sys_id}__layers"
+        count_key = f"layer__{sys_id}__counts"
+        if layer_key in z.files and count_key in z.files:
+            for layer, count in zip(z[layer_key], z[count_key]):
+                layer_hits[sys_id][int(layer)] += float(count)
+
+    return data, layer_hits
+
+
+def merge_worker_outputs(partial_files):
+    merged_data = None
+    merged_layer_hits = {sys_id: defaultdict(int) for sys_id in SYS_TO_KEY}
+
+    for path in partial_files:
+        data, layer_hits = load_worker_output(path)
+
+        if merged_data is None:
+            merged_data = {}
+            for key, value in data.items():
+                merged_data[key] = value.copy() if isinstance(value, np.ndarray) else value
+        else:
+            for key, value in data.items():
+                merged_data[key] += value
+
+        for sys_id in SYS_TO_KEY:
+            for layer, count in layer_hits[sys_id].items():
+                merged_layer_hits[sys_id][int(layer)] += float(count)
+
+    return merged_data, merged_layer_hits
+
+
+def run_worker_if_requested():
+    if "--worker" not in sys.argv:
+        return False
+
+    label      = sys.argv[sys.argv.index("--label") + 1]
+    fname      = sys.argv[sys.argv.index("--file") + 1]
+    out_npz    = sys.argv[sys.argv.index("--out") + 1]
+    collection = sys.argv[sys.argv.index("--collection") + 1]
+
+    data, layer_hits = collect_tracks([fname], label, collection)
+    save_worker_output(out_npz, data, layer_hits)
+    print(f"[worker] saved {out_npz}")
+    return True
+
+
+# CHANGE: run worker mode before the parent data-collection block.
+if run_worker_if_requested():
+    sys.exit(0)
 
 
 # ── Data collection ────────────────────────────────────────────────────────
+# Default: process any (label, collection, event_idx) that lacks a .npz file.
+# --plot-only: skip all LCIO processing; use whatever .npz files exist on disk.
 
-all_data = []   # list of (label, data_dict, layer_hits_dict)
-for label, file_list in TRACK_SETS:
-    data, layer_hits = collect_tracks(file_list, label)
-    all_data.append((label, data, layer_hits))
-    print(f"{label}: {len(data['total_nhits'])} tracks")
+def safe(s):
+    """Filesystem-safe version of a label or collection name."""
+    return s.replace(" ", "_").replace("/", "_").replace("$", "").replace("\\", "").replace(",", "")
+
+
+NPZ_DIR = os.path.join(OUTPUT_DIR, "histograms")
+os.makedirs(NPZ_DIR, exist_ok=True)
+
+
+def event_npz_path(label, collection, event_idx):
+    """Persistent per-(label, collection, event) merged histogram file."""
+    return os.path.join(
+        NPZ_DIR,
+        f"{safe(label)}__{safe(collection)}__event{event_idx:04d}_merged.npz",
+    )
+
+
+if "--plot-only" not in sys.argv:
+    tmp_dir = tempfile.mkdtemp(prefix="track_hists_", dir=OUTPUT_DIR)
+    print(f"[parent] worker histogram files will be written under {tmp_dir}")
+
+    for collection in TRACK_COLLECTIONS:
+        for label, events in TRACK_SETS:
+            for event_idx, file_list in enumerate(events):
+                out_path = event_npz_path(label, collection, event_idx)
+                if os.path.exists(out_path):
+                    print(f"[skip] already processed: {out_path}")
+                    continue
+
+                print(f"\n[parent] {label} | {collection} | event {event_idx}")
+                partial_files = []
+                for ifile, fname in enumerate(file_list):
+                    tmp_npz = os.path.join(
+                        tmp_dir,
+                        f"{safe(label)}__{safe(collection)}__ev{event_idx:04d}__f{ifile}.npz",
+                    )
+                    print(f"  [parent] launching worker: {fname}")
+                    subprocess.run(
+                        [
+                            sys.executable,
+                            os.path.abspath(__file__),
+                            "--worker",
+                            "--label",      label,
+                            "--collection", collection,
+                            "--file",       fname,
+                            "--out",        tmp_npz,
+                        ],
+                        check=True,
+                    )
+                    partial_files.append(tmp_npz)
+
+                data, layer_hits = merge_worker_outputs(partial_files)
+                save_worker_output(out_path, data, layer_hits)
+                print(f"[parent] saved {out_path}  ({data['n_tracks']} tracks)")
+
+print()
+
+# ── Per-event track count text files ──────────────────────────────────────
+for collection in TRACK_COLLECTIONS:
+    safe_col = safe(collection)
+    for label, events in TRACK_SETS:
+        for event_idx, _ in enumerate(events):
+            npz_path = event_npz_path(label, collection, event_idx)
+            if not os.path.exists(npz_path):
+                continue
+            evt_data, _ = load_worker_output(npz_path)
+            n_tracks = int(evt_data["n_tracks"])
+            txt_path = os.path.join(
+                NPZ_DIR,
+                f"{safe(label)}__{safe_col}__event{event_idx:04d}_ntracks.txt",
+            )
+            with open(txt_path, "w") as f:
+                f.write(f"{n_tracks}\n")
+            print(f"[ntracks] {label} | {collection} | event {event_idx}: {n_tracks} tracks -> {txt_path}")
 
 print()
 
 # ── Plotting helpers ───────────────────────────────────────────────────────
 
-def overlay_hist(ax, datasets, bins, xlabel, title, xscale="linear", yscale="linear", yunit=""):
-    """datasets: list of (values_array, label) pairs."""
-    kw = dict(histtype="step", linewidth=1.5)
-    for values, label in datasets:
-        if len(values):
-            ax.hist(values, bins=bins, weights=np.ones(len(values)) / len(values), label=label, **kw)
-    ax.set_xlabel(xlabel)
-    bw = float(np.diff(bins).mean())
-    bw_str = f"{bw:g}" if bw == int(bw) else f"{bw:.3g}"
-    unit_str = f" {yunit}" if yunit else ""
-    ax.set_ylabel(f"Fraction of tracks / ({bw_str}{unit_str})")
-    ax.set_title(title)
+def overlay_hist(ax, datasets, bins, xlabel, title, xscale="linear", yscale="linear", yunit="", normalize=True, ax_ratio=None, ref_label=None):
+    """datasets: list of (hist_counts_array, label, n_tracks) pairs."""
+    ref_y = None
+    if ax_ratio is not None and ref_label is not None:
+        for counts, label, n_tracks in datasets:
+            if label == ref_label and n_tracks > 0 and np.sum(counts) > 0:
+                ref_y = counts / float(n_tracks) if normalize else counts
+                break
+
+    for counts, label, n_tracks in datasets:
+        if n_tracks > 0 and np.sum(counts) > 0:
+            y = counts / float(n_tracks) if normalize else counts
+            ax.stairs(y, bins, label=label, linewidth=1.5)
+            if ax_ratio is not None and ref_y is not None:
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    ratio = np.where(ref_y > 0, y / ref_y, np.nan)
+                ax_ratio.stairs(ratio, bins, linewidth=1.5)
+
+    ax.set_ylabel("Density" if normalize else "Hits")
     ax.set_xscale(xscale)
     ax.set_yscale(yscale)
-    ax.legend()
-    ax.grid(True, linestyle=":", linewidth=0.5, alpha=0.7)
+    ax.legend(fontsize=16, loc="best")
+
+    if ax_ratio is not None:
+        ax_ratio.axhline(1, color="gray", linestyle="--", linewidth=0.8)
+        ax_ratio.set_xlabel(xlabel)
+        ax_ratio.set_xscale(xscale)
+        ax_ratio.set_ylabel("Ratio to\nFull Simulation", fontsize=12)
+    else:
+        ax.set_xlabel(xlabel)
 
 
-def make_datasets(key):
-    return [(data[key], label) for label, data, _ in all_data]
-
-
-# (key, bins, yunit, xlabel, title, xscale, yscale, filename)
-PLOT_SPECS = [
-    # ── subdetector hit counts ──────────────────────────────────────────────
-    ("vxd_barrel_nhits", np.arange(0, 9),          "hit",  "VXD barrel hits",  "VXD Barrel Hits per Track",  "linear", "linear", "vxd_barrel_hits.pdf"),
-    ("vxd_endcap_nhits", np.arange(0, 9),          "hit",  "VXD endcap hits",  "VXD Endcap Hits per Track",  "linear", "linear", "vxd_endcap_hits.pdf"),
-    ("it_barrel_nhits",  np.arange(0, 6),          "hit",  "IT barrel hits",   "IT Barrel Hits per Track",   "linear", "linear", "it_barrel_hits.pdf"),
-    ("it_endcap_nhits",  np.arange(0, 9),          "hit",  "IT endcap hits",   "IT Endcap Hits per Track",   "linear", "linear", "it_endcap_hits.pdf"),
-    ("ot_barrel_nhits",  np.arange(0, 5),          "hit",  "OT barrel hits",   "OT Barrel Hits per Track",   "linear", "linear", "ot_barrel_hits.pdf"),
-    ("ot_endcap_nhits",  np.arange(0, 6),          "hit",  "OT endcap hits",   "OT Endcap Hits per Track",   "linear", "linear", "ot_endcap_hits.pdf"),
-    # ── totals & track parameters ───────────────────────────────────────────
-    ("total_nhits",      np.arange(0, 25),         "hit",  "Total hits",       "Total Hits per Track",       "linear", "linear", "total_hits.pdf"),
-    ("eta",              np.linspace(-3, 3, 61),   "",     "Track η",          "Track η",                    "linear", "linear", "eta.pdf"),
-    ("phi",              np.linspace(-pi, pi, 65), "rad",  "Track φ [rad]",    "Track φ",                    "linear", "linear", "phi.pdf"),
-    ("chi2_reduced",     np.linspace(0, 5, 6),     "",     "χ²/Ndf",           "Track χ²/Ndf",               "linear", "linear", "chi2_reduced.pdf"),
-    ("d0",               np.linspace(-5, 5, 51),   "mm",   "d₀ [mm]",          "Track d₀",                   "linear", "linear", "d0.pdf"),
-    ("z0",               np.linspace(-25, 25, 101),"mm",   "z₀ [mm]",          "Track z₀",                   "linear", "linear", "z0.pdf"),
-    ("pt",               np.logspace(-1, 4, 61),  "GeV",  "Track $p_T$ [GeV]", "Track $p_T$",                "log",    "log",    "pt.pdf"),
-]
-
-# ── Individual PDFs ────────────────────────────────────────────────────────
-
-for key, bins, yunit, xlabel, title, xscale, yscale, fname in PLOT_SPECS:
-    fig, ax = plt.subplots(figsize=(6, 4))
-    overlay_hist(ax, make_datasets(key), bins, xlabel, title, xscale, yscale, yunit=yunit)
-    if key == "pt":
-        stats_lines = []
-        for label, data, _ in all_data:
-            pt = data["pt"][np.isfinite(data["pt"])]
-            stats_lines.append(f"{label}: median={np.median(pt):.3g} GeV, mean={np.mean(pt):.3g} GeV")
-        ax.text(0.03, 0.03, "\n".join(stats_lines), transform=ax.transAxes, fontsize=7.5,
-                va="bottom", ha="left", bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8))
-    fig.tight_layout()
-    path = os.path.join(OUTPUT_DIR, fname)
-    fig.savefig(path)
-    plt.close(fig)
-    print(f"Saved {path}")
-
-# ── Combined multi-page PDF ────────────────────────────────────────────────
-
-combined_path = os.path.join(OUTPUT_DIR, "all_plots.pdf")
-with PdfPages(combined_path) as pdf:
-
-    # Page 1: subdetector hit counts (3×2)
-    fig, axs = plt.subplots(3, 2, figsize=(11, 12))
-    for ax, (key, bins, yunit, xlabel, title, xscale, yscale, _) in zip(axs.flat, PLOT_SPECS[:6]):
-        overlay_hist(ax, make_datasets(key), bins, xlabel, title, xscale, yscale, yunit=yunit)
-    fig.suptitle("Subdetector Hit Counts per Track", fontsize=13)
-    fig.tight_layout()
-    pdf.savefig(fig)
-    plt.close(fig)
-
-    # Page 2: total hits + track parameters (3×2)
-    fig, axs = plt.subplots(3, 2, figsize=(11, 12))
-    for ax, (key, bins, yunit, xlabel, title, xscale, yscale, _) in zip(axs.flat, PLOT_SPECS[6:12]):
-        overlay_hist(ax, make_datasets(key), bins, xlabel, title, xscale, yscale, yunit=yunit)
-    fig.suptitle("Total Hits & Track Parameters", fontsize=13)
-    fig.tight_layout()
-    pdf.savefig(fig)
-    plt.close(fig)
-
-    # Page 3: track pT
-    fig, ax = plt.subplots(figsize=(7, 5))
-    key, bins, yunit, xlabel, title, xscale, yscale, _ = PLOT_SPECS[12]
-    overlay_hist(ax, make_datasets(key), bins, xlabel, title, xscale, yscale, yunit=yunit)
-    stats_lines = []
-    for label, data, _ in all_data:
-        pt = data["pt"][np.isfinite(data["pt"])]
-        stats_lines.append(f"{label}: median={np.median(pt):.3g} GeV, mean={np.mean(pt):.3g} GeV")
-    ax.text(0.03, 0.03, "\n".join(stats_lines), transform=ax.transAxes, fontsize=8,
-            va="bottom", ha="left", bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8))
-    fig.suptitle("Track Transverse Momentum", fontsize=13)
-    fig.tight_layout()
-    pdf.savefig(fig)
-    plt.close(fig)
-
-print(f"\nCombined plot saved to {combined_path}")
-
-# ── Average hits per track vs. layer number ────────────────────────────────
-
+# (display_name, file_key) — output filename: avg_hits_per_layer_{file_key}__{safe_col}.pdf
 SYS_NAMES = {
-    1: "VXD Barrel", 2: "VXD Endcap",
-    3: "IT Barrel",  4: "IT Endcap",
-    5: "OT Barrel",  6: "OT Endcap",
+    1: ("VXD Barrel", "vxd_barrel"),
+    2: ("VXD Endcap", "vxd_endcap"),
+    3: ("IT Barrel",  "it_barrel"),
+    4: ("IT Endcap",  "it_endcap"),
+    5: ("OT Barrel",  "ot_barrel"),
+    6: ("OT Endcap",  "ot_endcap"),
 }
 
-n_sets = len(all_data)
-bar_width = 0.6 / n_sets
+# ── Plots — one set of PDFs per TRACK_COLLECTION ───────────────────────────
 
-layer_pdf_path = os.path.join(OUTPUT_DIR, "avg_hits_per_layer.pdf")
-with PdfPages(layer_pdf_path) as pdf:
-    fig, axs = plt.subplots(3, 2, figsize=(11, 12))
-    for ax, (sys_id, sys_name) in zip(axs.flat, SYS_NAMES.items()):
+print()
+for collection in TRACK_COLLECTIONS:
+    safe_col = safe(collection)
+
+    # Gather all processed events for each label and merge in memory.
+    all_data = []
+    for label, events in TRACK_SETS:
+        pattern = os.path.join(NPZ_DIR, f"{safe(label)}__{safe_col}__event*_merged.npz")
+        found = sorted(glob.glob(pattern))
+        if not found:
+            print(f"[plot] no .npz files for '{label}' | {collection} — skipping")
+            continue
+        data, layer_hits = merge_worker_outputs(found)
+        print(f"[plot] '{label}' | {collection}: {len(found)} event(s), {data['n_tracks']} tracks")
+        plot_label = label if label == RATIO_REF else f"{label} (local $\\phi$)"
+        all_data.append((plot_label, data, layer_hits))
+
+    if not all_data:
+        print(f"[plot] nothing to plot for {collection}\n")
+        continue
+
+    # ── Individual PDFs ────────────────────────────────────────────────────
+
+    for key, bins, yunit, xlabel, title, xscale, yscale in PLOT_SPECS:
+        fig, (ax_top, ax_ratio) = plt.subplots(
+            2, 1, figsize=(6, 5),
+            gridspec_kw={"height_ratios": [3, 1]}, sharex=True)
+        fig.subplots_adjust(hspace=0.05)
+        datasets = [(d[key], lbl, d["n_tracks"]) for lbl, d, _ in all_data]
+        is_nhits = key.endswith("nhits")
+        overlay_hist(ax_top, datasets, bins, xlabel, title, xscale, yscale, yunit=yunit, normalize=True,
+                     ax_ratio=ax_ratio, ref_label=RATIO_REF)
+        if is_nhits:
+            tick_min = int(bins[0] + 0.5)
+            tick_max = int(bins[-1] - 0.5)
+            ax_top.set_xticks(np.arange(tick_min, tick_max + 1))
+        fig.tight_layout()
+        path = os.path.join(OUTPUT_DIR, f"{key}__{safe_col}{FILE_SUFFIX}.pdf")
+        fig.savefig(path, dpi=DPI)
+        plt.close(fig)
+        print(f"Saved {path}")
+
+    # ── Average hits per track vs. layer — one PDF per subdetector ────────
+
+    for sys_id, (sys_name, sys_key) in SYS_NAMES.items():
+        fig, (ax_top, ax_ratio) = plt.subplots(
+            2, 1, figsize=(6, 5),
+            gridspec_kw={"height_ratios": [3, 1]}, sharex=True)
+        fig.subplots_adjust(hspace=0.05)
         all_layers = sorted(set().union(*[lh[sys_id].keys() for _, _, lh in all_data]))
         x = np.array(all_layers)
-        for i, (label, data, layer_hits) in enumerate(all_data):
-            n_tracks = len(data["total_nhits"])
-            lh = layer_hits[sys_id]
-            offset = (i - n_sets / 2.0 + 0.5) * bar_width
-            avg = np.array([lh.get(l, 0) / n_tracks for l in all_layers]) if n_tracks else np.zeros(len(x))
-            ax.bar(x + offset, avg, width=bar_width, label=label, alpha=0.8)
-        ax.set_xticks(x)
-        ax.set_xlabel("Layer")
-        ax.set_ylabel("Avg hits / track")
-        ax.set_title(f"{sys_name}")
-        ax.legend()
-        ax.grid(True, axis="y", linestyle=":", linewidth=0.5, alpha=0.7)
+        edges = np.concatenate([x - 0.5, [x[-1] + 0.5]]) if len(x) else np.array([])
 
-    fig.suptitle("Average Hits per Track vs. Layer", fontsize=13)
-    fig.tight_layout()
-    pdf.savefig(fig)
-    plt.close(fig)
+        ref_avg = None
+        for lbl, d, layer_hits in all_data:
+            if lbl == RATIO_REF and d["n_tracks"] > 0:
+                lh = layer_hits[sys_id]
+                ref_avg = np.array([lh.get(l, 0) / d["n_tracks"] for l in all_layers])
+                break
 
-print(f"Layer plot saved to {layer_pdf_path}")
+        for lbl, d, layer_hits in all_data:
+            n_tracks = d["n_tracks"]
+            lh       = layer_hits[sys_id]
+            avg = (np.array([lh.get(l, 0) / n_tracks for l in all_layers])
+                   if n_tracks else np.zeros(len(x)))
+            ax_top.stairs(avg, edges, label=lbl, linewidth=1.5)
+            if ref_avg is not None:
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    ratio = np.where(ref_avg > 0, avg / ref_avg, np.nan)
+                ax_ratio.stairs(ratio, edges, linewidth=1.5)
+
+        ax_top.set_xticks(x)
+        ax_top.set_ylabel("Avg. hits / track")
+        ax_top.legend(fontsize=16, loc="best")
+        ax_ratio.axhline(1, color="gray", linestyle="--", linewidth=0.8)
+        ax_ratio.set_xticks(x)
+        ax_ratio.set_xlabel("Layer")
+        ax_ratio.set_ylabel("Ratio to\nFull Simulation", fontsize=12)
+        fig.tight_layout()
+        path = os.path.join(OUTPUT_DIR, f"avg_hits_per_layer_{sys_key}__{safe_col}{FILE_SUFFIX}.pdf")
+        fig.savefig(path, dpi=DPI)
+        plt.close(fig)
+        print(f"Saved {path}")
+
+    print()
+
 print("Done.")
