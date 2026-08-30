@@ -28,6 +28,7 @@ Before running any of the scripts in this repository, you'll want to make a vers
 2.   `02_generate_samples.py`: the main training script. Here, you'll have the option to choose whether you train the `flow` or `tabddpm` model with the flag `--MODEL`.  We recommend training (`--TRAIN`) and sampling (`--EVAL`) in separate training runs, since the sampling process can take quite a bit of time depending on your machine. 
 3.   `03_evaluate_samples.py`: evaluate the quality of the ML models hits by training a BDT to discriminate the full simulation BIB from the GenBIB
 
+For convenience, we also have a notebook `nice_plots.ipynb`...
 ### Track fitting
 
 The next set of scripts need to be run on a machine with the muon collider software image available. Details of how to access the image are [here](https://mcd-wiki.web.cern.ch/software/tutorials/fermilab2024/)
@@ -39,10 +40,10 @@ apptainer run \
   -B /ospool/uc-shared/public/futurecolliders \
   /cvmfs/unpacked.cern.ch/ghcr.io/muoncollidersoft/mucoll-sim-ubuntu24:v2.11-amd64
 
-
-All of the scripts are in the `osg` folder on this repository. We have compiled them into a helpful bash script `osg/run_osg.sh`, which runs 2 commands:
-1. `numpy_to_lcio.py`:
+todo: talk about the necessary file structure that you need to set up, unfortunately has to be done manually
+All of the scripts are in the `osg` folder on this repository. We have compiled them into a helpful bash script `osg/run_osg.sh`, which runs 3 sets of commands:
+1. `numpy_to_lcio.py`: converts from the numpy. Currently, you have to manually put all fo the samples
 2. `steer_reco.py`:
-3. steer_BIBtracking`:
+3. `steer_BIBtracking`:
 
 Finally, run `compare_tracsk.py` to make the plots (thank you to Mark Larson for writing the initial version of this script)
