@@ -24,6 +24,7 @@ from ROOT import Math
 import os
 #from tqdm import tqdm
 
+import sys
 import argparse
 
 parser = argparse.ArgumentParser()
@@ -35,6 +36,21 @@ args = parser.parse_args()
 OUTPUT_PATH = args.OUTPUT_PATH
 INPUT_SUFFIX = args.INPUT_SUFFIX
 USE_TREE_CELL_ID = args.USE_TREE_CELL_ID
+
+class _Tee:
+    def __init__(self, *streams):
+        self._streams = streams
+    def write(self, data):
+        for s in self._streams:
+            s.write(data)
+    def flush(self):
+        for s in self._streams:
+            s.flush()
+
+_log_path = Path(f"/scratch/rrm39/v7_reco/recoBIB/flow_samples/{INPUT_SUFFIX}/run_log.txt")
+_log_path.parent.mkdir(parents=True, exist_ok=True)
+_log_file = open(_log_path, "w")
+sys.stdout = _Tee(sys.__stdout__, _log_file)
 
 # Load hit arrays
 collections = [
@@ -773,3 +789,7 @@ for evt_num in range(NUM_EVENTS):
 writer.close()
 
 print(f"Wrote {OUTPUT_PATH} with {NUM_EVENTS} events using closest geometry CellID0")
+
+sys.stdout = sys.__stdout__
+_log_file.close()
+print(f"Log saved to {_log_path}")
