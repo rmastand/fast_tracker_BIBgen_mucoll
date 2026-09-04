@@ -9,17 +9,7 @@ Before running any of the scripts in this repository, you'll want to make a vers
 - `PATH_TO_DATA_DIR`: path to wherever your `.slcio` files are on your local machine *these can be downloaded from ])
 - `PATH_TO_OUTPUT_DIR`: path where all model training intermediates will be saved to
 - `PATH_TO_WANDB_DIR`:  path where all wandb training intermediates will be saved to
-- `FEATURE_ORDER`: specify an order for feature training observables. Ensure that all conditioning observables are last
-  - 0: energy
-  - 1: $x$
-  - 2: $y$
-  - 3: $z$
-  - 4: $t$
-  - 5: system
-  - 6: side
-  - 7: layer
-  - 8: module
-  - 9: sensor
+- `FEATURE_ORDER`: specify an order for feature training observables. Ensure that all conditioning observables are last. The available observables are: `{0: energy, 1: x, 2: y, 3: z, 4: t, 5: system, 6: side, 7: layer, 8: module, 9: sensor}`
 - `NUM_COND_INPUTS`: number of conditioning observables
 - `FEATURE_INDICES_DICT`: a dictionary that maps between the ordered indices in `FEATURE_ORDER` to the actual features. If you trin in the `r-phi` basis, you can generally map $x \rightarrow r$ and $y \rightarrow \phi$
 
