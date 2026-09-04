@@ -37,4 +37,4 @@ All of the scripts are in the `osg` folder on this repository. We have compiled 
 2. `steer_reco.py`: runs digitization
 3. `steer_BIBtracking`: runs reconstruction. *This step is time-intensive, and can ~20 hours per event.*
 
-Finally, run `compare_tracsk.py` to make the plots (thank you to Mark Larson for writing the initial version of this script)
+Finally, run `compare_tracks.py` to make the plots.
