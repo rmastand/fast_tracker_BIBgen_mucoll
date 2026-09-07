@@ -8,3 +8,8 @@
 # Editor / OS junk
 *~
 slurm-*
+
+
+jobscripts/*
+
+plots/*
