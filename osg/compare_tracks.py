@@ -19,14 +19,20 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+import yaml
 import pyLCIO
 from pyLCIO import IOIMPL, EVENT, UTIL
 DPI = 300
 plt.style.use("science.mplstyle")
+
+_osg_cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configs_osg.yaml")
+with open(_osg_cfg_path) as _f:
+    _osg_cfg = yaml.safe_load(_f)
+
 # ── User configuration ─────────────────────────────────────────────────────
 
 TRACK_COLLECTIONS = ["SelectedTracks", "SiTracksDeduped"] #  ["SelectedTracks", "SiTracksDeduped"]
-OUTPUT_DIR        = "/scratch/rrm39/slcio"
+OUTPUT_DIR        = _osg_cfg["COMPARE_OUTPUT_DIR"]
 BFIELD            = 5.0   # Tesla
 FILE_SUFFIX       = "diff"    # appended before .pdf, e.g. "_v2"
 RATIO_REF         = "Full Simulation"  # denominator label for the ratio panel
@@ -38,37 +44,37 @@ TRACK_SETS = [
 
 
     ("Full Simulation", [
-        [ 
-            f"/scratch/rrm39/v7_reco/slcio/output_sim_v7_nugun_0_50_reco{label}_selected_0_30.slcio",
-            f"/scratch/rrm39/v7_reco/slcio/output_sim_v7_nugun_0_50_reco{label}_selected_30_70.slcio",
-            f"/scratch/rrm39/v7_reco/slcio/output_sim_v7_nugun_0_50_reco{label}_selected_70_110.slcio",
-            f"/scratch/rrm39/v7_reco/slcio/output_sim_v7_nugun_0_50_reco{label}_selected_110_150.slcio",
-            f"/scratch/rrm39/v7_reco/slcio/output_sim_v7_nugun_0_50_reco{label}_selected_150_180.slcio",
+        [
+            f"{_osg_cfg['SLCIO_DIR']}/output_sim_v7_nugun_0_50_reco{label}_selected_0_30.slcio",
+            f"{_osg_cfg['SLCIO_DIR']}/output_sim_v7_nugun_0_50_reco{label}_selected_30_70.slcio",
+            f"{_osg_cfg['SLCIO_DIR']}/output_sim_v7_nugun_0_50_reco{label}_selected_70_110.slcio",
+            f"{_osg_cfg['SLCIO_DIR']}/output_sim_v7_nugun_0_50_reco{label}_selected_110_150.slcio",
+            f"{_osg_cfg['SLCIO_DIR']}/output_sim_v7_nugun_0_50_reco{label}_selected_150_180.slcio",
         ]
         for label in ["", "_1", "_10", "_11", "_12", "_13", "_14", "_15", "_16", "_17"]
     ]),
 
-     
+
 
 
     ("GenBIB-Diff", [
-        [ 
-            f"/scratch/rrm39/v7_reco/slcio/output_diff_local_reco{label}{'_reco' if label else ''}_selected_0_30.slcio",
-            f"/scratch/rrm39/v7_reco/slcio/output_diff_local_reco{label}{'_reco' if label else ''}_selected_30_70.slcio",
-            f"/scratch/rrm39/v7_reco/slcio/output_diff_local_reco{label}{'_reco' if label else ''}_selected_70_110.slcio",
-            f"/scratch/rrm39/v7_reco/slcio/output_diff_local_reco{label}{'_reco' if label else ''}_selected_110_150.slcio",
-            f"/scratch/rrm39/v7_reco/slcio/output_diff_local_reco{label}{'_reco' if label else ''}_selected_150_180.slcio",
+        [
+            f"{_osg_cfg['SLCIO_DIR']}/output_diff_local_reco{label}{'_reco' if label else ''}_selected_0_30.slcio",
+            f"{_osg_cfg['SLCIO_DIR']}/output_diff_local_reco{label}{'_reco' if label else ''}_selected_30_70.slcio",
+            f"{_osg_cfg['SLCIO_DIR']}/output_diff_local_reco{label}{'_reco' if label else ''}_selected_70_110.slcio",
+            f"{_osg_cfg['SLCIO_DIR']}/output_diff_local_reco{label}{'_reco' if label else ''}_selected_110_150.slcio",
+            f"{_osg_cfg['SLCIO_DIR']}/output_diff_local_reco{label}{'_reco' if label else ''}_selected_150_180.slcio",
         ]
                 for label in ["", "_1", "_10", "_11", "_12", "_13", "_14", "_15", "_16", "_17"]
     ]),
 
     ("GenBIB-Flow", [
                 [
-                    f"/scratch/rrm39/v7_reco/slcio/output_flow_NCSF_bins8_local_reco{label}{'_reco' if label else ''}_selected_0_30.slcio",
-                    f"/scratch/rrm39/v7_reco/slcio/output_flow_NCSF_bins8_local_reco{label}{'_reco' if label else ''}_selected_30_70.slcio",
-                    f"/scratch/rrm39/v7_reco/slcio/output_flow_NCSF_bins8_local_reco{label}{'_reco' if label else ''}_selected_70_110.slcio",
-                    f"/scratch/rrm39/v7_reco/slcio/output_flow_NCSF_bins8_local_reco{label}{'_reco' if label else ''}_selected_110_150.slcio",
-                    f"/scratch/rrm39/v7_reco/slcio/output_flow_NCSF_bins8_local_reco{label}{'_reco' if label else ''}_selected_150_180.slcio",
+                    f"{_osg_cfg['SLCIO_DIR']}/output_flow_NCSF_bins8_local_reco{label}{'_reco' if label else ''}_selected_0_30.slcio",
+                    f"{_osg_cfg['SLCIO_DIR']}/output_flow_NCSF_bins8_local_reco{label}{'_reco' if label else ''}_selected_30_70.slcio",
+                    f"{_osg_cfg['SLCIO_DIR']}/output_flow_NCSF_bins8_local_reco{label}{'_reco' if label else ''}_selected_70_110.slcio",
+                    f"{_osg_cfg['SLCIO_DIR']}/output_flow_NCSF_bins8_local_reco{label}{'_reco' if label else ''}_selected_110_150.slcio",
+                    f"{_osg_cfg['SLCIO_DIR']}/output_flow_NCSF_bins8_local_reco{label}{'_reco' if label else ''}_selected_150_180.slcio",
                 ]
                    for label in ["", "_1", "_10", "_11", "_12", "_13", "_14", "_15", "_16", "_17"]
             ]),

@@ -8,7 +8,7 @@ This repository contains code for training generative models, generating GenBIB 
 
 #### Setup
 
-Before running any of the scripts in this repository, you'll want to make a version of `configs.yaml` for your setup. Relevant keywords to set are:
+Before running any of the scripts in this repository, you'll want to make a version of `configs_train.yaml` for your setup. Relevant keywords to set are:
 
 - `PATH_TO_DATA_DIR`: path to wherever your `.slcio` files are on your local machine *these can be downloaded from ])
 - `PATH_TO_OUTPUT_DIR`: path where all model training intermediates will be saved to
@@ -34,7 +34,16 @@ The GenBIB `.npy` files produced in the previous section are used as inputs to t
 
 The next set of scripts need to be run on a machine with the muon collider software image available. Details of how to access the image are [here](https://mcd-wiki.web.cern.ch/software/tutorials/fermilab2024/). The scripts in this repository use version 2.11.
 
-First you'll need to place the GenBIB `.npy` files into a folder `<folder_name>`, which will then be the first argument of the `run_pipeline` method in `osg/run_osg.sh`. Within the folder, the files should be named after the corresponding collection, e.g., `OuterTrackerBarrelCollection.npy`.
+First you'll need to place the GenBIB `.npy` files into a folder `REBOBIB_FLOW_SAMPLES_DIR/folder_name`. Within the folder, the files should be named after the corresponding collection, e.g., `OuterTrackerBarrelCollection.npy`. Then `folder_name` will be the first argument of the `run_pipeline` method in `osg/run_osg.sh`.
+
+You'll also want to make version of `osg/configs_osg.yaml` for your setup. Relevant keywords to set are:
+
+- `SCRATCH_DIR`: path where the MuonColliderSoftware is installed
+- `SLCIO_DIR`: path where all intermediate `.slcio` files (e.g. digitization and reconstruction intermediates) will be scored
+- `REBOBIB_FLOW_SAMPLES_DIR`: defined above
+- `GEO_MAP_PATH`: path where youw want to save the detector geometry (x,y,z) $\rightarrow$ cellID function (this will be made automatically in `numpy_to_lcio.py`)
+- `COMPARE_OUTPUT_DIR`: path to store any plots make in `compare_tracks.py`
+
 
 #### Scripts
 

@@ -26,7 +26,7 @@ parser.add_argument("--MODEL", choices=["flow_NCSF", "flow_NSF", "tabddpm"],defa
 parser.add_argument("--BASIS", choices=["xy", "rphi", "local_phi"], default="rphi", help="Coordinate basis used for training")
 parser.add_argument("--PLOTS_DIR", default="plots", help="Directory to save plots")
 parser.add_argument("--NUM_SAMPLES_TO_COMPARE", type=int, default=100_000, help="Number of samples to compare for BDT evaluation")
-parser.add_argument("--CONFIGS_PATH", type=str, default="configs", help="Path to the configs file")
+parser.add_argument("--CONFIGS_PATH", type=str, default="configs_train", help="Path to the configs file")
 run_single_feature_BDTs = False
 args = parser.parse_args()
 

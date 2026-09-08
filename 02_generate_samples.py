@@ -47,7 +47,7 @@ parser.add_argument("--MODEL", choices=["flow", "tabddpm"],default="flow", help=
 parser.add_argument("--ZUKO_ID", type=str, default="NCSF", help="Zuko model ID")
 parser.add_argument("--NAME", type=str, default="", help="Name")
 parser.add_argument("--OVERSAMPLE", default=1, type=int, help="Number of generated samples per reference row")
-parser.add_argument("--CONFIG_PATH", default="configs", type=str, help="Path to the configuration file")
+parser.add_argument("--CONFIG_PATH", default="configs_train", type=str, help="Path to the configuration file")
 
 
 

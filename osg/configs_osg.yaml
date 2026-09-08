@@ -1,0 +1,5 @@
+REBOBIB_FLOW_SAMPLES_DIR: /scratch/rrm39/v7_reco/recoBIB/flow_samples
+SLCIO_DIR: /scratch/rrm39/v7_reco/slcio
+SCRATCH_DIR: /scratch/rrm39
+GEO_MAP_PATH: /scratch/rrm39/tutorial2024/MuC-Tutorial/analysis/BIBAI/geomap_sensor_geometry.npz
+COMPARE_OUTPUT_DIR: /scratch/rrm39/slcio

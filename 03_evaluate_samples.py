@@ -29,7 +29,7 @@ parser.add_argument("--TRAIN_SINGLE_BDTS", action="store_true", help="If set, tr
 parser.add_argument("--TRAIN_ALL_BDTS", action="store_true", help="If set, train BDTs on all collections combined")
 parser.add_argument("--PLOTS_DIR", default="plots", help="Directory to save plots")
 parser.add_argument("--NUM_SAMPLES_TO_COMPARE", type=int, default=-1, help="Number of samples to compare for BDT evaluation")
-parser.add_argument("--CONFIGS_PATH", type=str, default="configs", help="Path to the configs file")
+parser.add_argument("--CONFIGS_PATH", type=str, default="configs_train", help="Path to the configs file")
 run_single_feature_BDTs = False
 args = parser.parse_args()
 

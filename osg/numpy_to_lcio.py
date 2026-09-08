@@ -26,10 +26,15 @@ import os
 
 import sys
 import argparse
+import yaml
+
+_osg_cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configs_osg.yaml")
+with open(_osg_cfg_path) as _f:
+    _osg_cfg = yaml.safe_load(_f)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--INPUT_SUFFIX", type=str, default="", help="Path to the samples directory")
-parser.add_argument("--OUTPUT_PATH", type=str, default="/scratch/rrm39/v7_reco/slcio/output_flow_18_06.slcio", help="Output LCIO file path")
+parser.add_argument("--OUTPUT_PATH", type=str, default=f"{_osg_cfg['SLCIO_DIR']}/output_flow_18_06.slcio", help="Output LCIO file path")
 parser.add_argument("--USE_TREE_CELL_ID", action="store_true", help="If set, read tree_cell_id from column 9 and run mismatch diagnostics against the geometry-assigned cell ID")
 args = parser.parse_args()
 
@@ -47,7 +52,7 @@ class _Tee:
         for s in self._streams:
             s.flush()
 
-_log_path = Path(f"/scratch/rrm39/v7_reco/recoBIB/flow_samples/{INPUT_SUFFIX}/run_log.txt")
+_log_path = Path(f"{_osg_cfg['REBOBIB_FLOW_SAMPLES_DIR']}/{INPUT_SUFFIX}/run_log.txt")
 _log_path.parent.mkdir(parents=True, exist_ok=True)
 _log_file = open(_log_path, "w")
 sys.stdout = _Tee(sys.__stdout__, _log_file)
@@ -503,7 +508,7 @@ system_id_dict = {
     "OuterTrackerEndcapCollection": 6,
 }
 
-path_to_geo_map = Path("/scratch/rrm39/tutorial2024/MuC-Tutorial/analysis/BIBAI/geomap_sensor_geometry.npz")
+path_to_geo_map = Path(_osg_cfg["GEO_MAP_PATH"])
 geom = load_or_build_sensor_geometry(path_to_geo_map)
 print(f"loaded sensor geometry: {path_to_geo_map}")
 k = 64
@@ -522,7 +527,7 @@ for evt_num in range(NUM_EVENTS):
         num_mismatched_cell_ids = 0
 
 
-        hits_array = np.load(f"/scratch/rrm39/v7_reco/recoBIB/flow_samples/{INPUT_SUFFIX}/{COLLECTION_NAME}.npy")
+        hits_array = np.load(f"{_osg_cfg['REBOBIB_FLOW_SAMPLES_DIR']}/{INPUT_SUFFIX}/{COLLECTION_NAME}.npy")
   
  
         col = IMPL.LCCollectionVec(EVENT.LCIO.SIMTRACKERHIT)
