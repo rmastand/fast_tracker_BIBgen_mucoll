@@ -18,6 +18,8 @@ Before running any of the scripts in this repository, you'll want to make a vers
 - `FEATURE_INDICES_DICT`: a dictionary that maps between the ordered indices in `FEATURE_ORDER` to the actual features. If you train in the `r-phi` basis, you can generally map $x \rightarrow r$ and $y \rightarrow \phi$
   For example, with `FEATURE_ORDER = [0, 4, 1, 2, 3, 6, 7, 8, 9]` in the `r-phi` basis, the reordered columns are `[log(E), t, r, phi, z, side, layer, module, sensor]`.
 
+You'll also want to use the `environment.yaml` file to set up a conda environment. The `tabddpm` model uses code from [tab-ddpm](https://github.com/yandex-research/tab-ddpm), which is included in `diffusion/tabddpm_official/`. We have minimally modified some of the training and sampling functions from the official repository for our purposes.
+
 #### Scripts
 
 1. `01_process_data.ipynb`: a notebook mainly for data exploration of the `.slcio` files and to convert them to `.npy` arrays for ML model training. Note that you have the option to save out a different set of observables than `["Edep", "x", "y", "z", "t", "system", "side", "layer", "module", "sensor"]` if you so choose.

@@ -2,6 +2,8 @@ PATH_TO_DATA_DIR: /scratch/midway3/rmastand/muon_collider/nuGun_pT_0_50/reco_h5
 PATH_TO_OUTPUT_DIR: /scratch/midway3/rmastand/muon_collider
 PATH_TO_WANDB_DIR: /scratch/midway3/rmastand/wandb/
 ALL_COLLECTIONS: ["OuterTrackerBarrelCollection", "OuterTrackerEndcapCollection", "InnerTrackerBarrelCollection", "InnerTrackerEndcapCollection", "VertexBarrelCollection", "VertexEndcapCollection"]
+PATH_TO_DATA_BDT: /scratch/midway3/rmastand/muon_collider/post_cellID_filtering/
+
 
 FEATURE_ORDER: [0,4,1,2,3,6,7,8,9]
 NUM_COND_INPUTS: 4

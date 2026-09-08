@@ -1,4 +1,4 @@
-name: /scratch/midway3/rmastand/muon_collider_env
+name: muon_collider_env
 channels:
   - conda-forge
 dependencies:
@@ -243,4 +243,3 @@ dependencies:
       - widgetsnbextension==4.0.15
       - xgboost==3.2.0
       - zuko==1.6.0
-prefix: /scratch/midway3/rmastand/muon_collider_env

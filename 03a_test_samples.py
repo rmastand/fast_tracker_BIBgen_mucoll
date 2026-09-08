@@ -46,6 +46,7 @@ FEATURE_ORDER = configs["FEATURE_ORDER"]
 FEATURE_INDICES_DICT = configs["FEATURE_INDICES_DICT"]
 PATH_TO_DATA_DIR = configs["PATH_TO_DATA_DIR"]
 NUM_COND_INPUTS = configs["NUM_COND_INPUTS"]
+PATH_TO_DATA_BDT = configs["PATH_TO_DATA_BDT"]
 log_vars = []
 # print("CHECK THAT YOU'RE LOADING IN THE RIGHT FILE")
 # exit()
@@ -58,22 +59,15 @@ if args.MODEL == "flow_NCSF":
 
         exit()
 
-        # PATHS_TO_SAMPLES = {
-        #     "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTBC_cond4/",
-        #     "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_OTEC_cond4/",
-        #     "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_ITBC_cond4/",
-        #     "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_ITEC_cond4/",
-        #     "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_VBC_cond4/",
-        #     "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/zuko_outputs/flow_VEC_cond4/",
-        #                         }
+                            
     elif args.BASIS == "local_phi":
        PATHS_TO_SAMPLES = {
-                "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/flow_NCSF_bins8_local",
-                "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/flow_NCSF_bins8_local",
-                "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/flow_NCSF_bins8_local",
-                "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/flow_NCSF_bins8_local",
-                "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/flow_NCSF_bins8_local",
-                "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/post_cellID_filtering/flow_NCSF_bins8_local",
+                "OuterTrackerBarrelCollection": f"{PATH_TO_DATA_BDT}/flow_NCSF_bins8_local",
+                "OuterTrackerEndcapCollection": f"{PATH_TO_DATA_BDT}/flow_NCSF_bins8_local",
+                "InnerTrackerBarrelCollection": f"{PATH_TO_DATA_BDT}/flow_NCSF_bins8_local",
+                "InnerTrackerEndcapCollection": f"{PATH_TO_DATA_BDT}/flow_NCSF_bins8_local",
+                "VertexBarrelCollection": f"{PATH_TO_DATA_BDT}/flow_NCSF_bins8_local",
+                "VertexEndcapCollection": f"{PATH_TO_DATA_BDT}/flow_NCSF_bins8_local",
                                 }
 
 
@@ -81,22 +75,15 @@ elif args.MODEL == "tabddpm":
 
     if args.BASIS == "rphi":
         exit()
-        # PATHS_TO_SAMPLES = {
-        #     "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_OTBC_cond4/",
-        #     "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_OTEC_cond4/",
-        #     "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_ITBC_cond4/",
-        #     "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_ITEC_cond4/",
-        #     "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_VBC_cond4/",
-        #     "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_VEC_cond4/",
-        #                     }
+           
     elif args.BASIS == "local_phi":
         PATHS_TO_SAMPLES = {
-            "OuterTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_OTBC_cond4_local/",
-            "OuterTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_OTEC_cond4_local/",
-            "InnerTrackerBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_ITBC_cond4_local/",
-            "InnerTrackerEndcapCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_ITEC_cond4_local/",
-            "VertexBarrelCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_VBC_cond4_local/",
-            "VertexEndcapCollection": "/scratch/midway3/rmastand/muon_collider/ddpm_outputs/diff_VEC_cond4_local/",
+            "OuterTrackerBarrelCollection": f"{PATH_TO_DATA_BDT}/diff_local",
+            "OuterTrackerEndcapCollection": f"{PATH_TO_DATA_BDT}/diff_local",
+            "InnerTrackerBarrelCollection": f"{PATH_TO_DATA_BDT}/diff_local",
+            "InnerTrackerEndcapCollection": f"{PATH_TO_DATA_BDT}/diff_local",
+            "VertexBarrelCollection": f"{PATH_TO_DATA_BDT}/diff_local",
+            "VertexEndcapCollection": f"{PATH_TO_DATA_BDT}/diff_local/",
                             }
 
 
