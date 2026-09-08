@@ -52,7 +52,7 @@ class _Tee:
         for s in self._streams:
             s.flush()
 
-_log_path = Path(f"{_osg_cfg['REBOBIB_FLOW_SAMPLES_DIR']}/{INPUT_SUFFIX}/run_log.txt")
+_log_path = Path(f"{_osg_cfg['RECOBIB_FLOW_SAMPLES_DIR']}/{INPUT_SUFFIX}/run_log.txt")
 _log_path.parent.mkdir(parents=True, exist_ok=True)
 _log_file = open(_log_path, "w")
 sys.stdout = _Tee(sys.__stdout__, _log_file)
@@ -527,7 +527,7 @@ for evt_num in range(NUM_EVENTS):
         num_mismatched_cell_ids = 0
 
 
-        hits_array = np.load(f"{_osg_cfg['REBOBIB_FLOW_SAMPLES_DIR']}/{INPUT_SUFFIX}/{COLLECTION_NAME}.npy")
+        hits_array = np.load(f"{_osg_cfg['RECOBIB_FLOW_SAMPLES_DIR']}/{INPUT_SUFFIX}/{COLLECTION_NAME}.npy")
   
  
         col = IMPL.LCCollectionVec(EVENT.LCIO.SIMTRACKERHIT)
