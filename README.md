@@ -1,6 +1,6 @@
 # GenBIB
 
-This repository contains code for training generative models, generating GenBIB samples, and evaluating them for a muon collider detector.
+This repository contains code for training generative models to simulate beam-induced background (BIB) at a muon collider detector, generating GenBIB samples, and evaluating their quality.
 
 ## Running scripts
 
@@ -24,7 +24,7 @@ You'll also want to use the `environment.yaml` file to set up a conda environmen
 
 1. `01_process_data.ipynb`: a notebook mainly for data exploration of the `.slcio` files and to convert them to `.npy` arrays for ML model training. Note that you have the option to save out a different set of observables than `["Edep", "x", "y", "z", "t", "system", "side", "layer", "module", "sensor"]` if you so choose.
 2. `02_generate_samples.py`: the main training script. Here, you'll have the option to choose whether you train the `flow` or `tabddpm` model with the flag `--MODEL`. We recommend training (`--TRAIN`) and sampling (`--EVAL`) in separate training runs, since the sampling process can take quite a bit of time depending on your machine.
-3. `03_evaluate_samples.py`: evaluates the quality of the ML models hits by training BDTs to discriminate the full simulation BIB from the GenBIB
+3. `03_evaluate_samples.py`: evaluates the quality of the ML-generated hits by training BDTs to discriminate the full simulation BIB from the GenBIB
 
 For convenience, we also have a notebook `nice_plots.ipynb`, which was used to make all of the plots in the accompanying paper.
 
@@ -38,13 +38,13 @@ The next set of scripts need to be run on a machine with the muon collider softw
 
 First you'll need to place the GenBIB `.npy` files into a folder `RECOBIB_FLOW_SAMPLES_DIR/folder_name`. Within the folder, the files should be named after the corresponding collection, e.g., `OuterTrackerBarrelCollection.npy`. Then `folder_name` will be the first argument of the `run_pipeline` method in `osg/run_osg.sh`.
 
-You'll also want to make version of `osg/configs_osg.yaml` for your setup. Relevant keywords to set are:
+You'll also want to make a version of `osg/configs_osg.yaml` for your setup. Relevant keywords to set are:
 
 - `SCRATCH_DIR`: path where the MuonColliderSoftware is installed
-- `SLCIO_DIR`: path where all intermediate `.slcio` files (e.g. digitization and reconstruction intermediates) will be scored
+- `SLCIO_DIR`: path where all intermediate `.slcio` files (e.g. digitization and reconstruction intermediates) will be stored
 - `RECOBIB_FLOW_SAMPLES_DIR`: defined above
-- `GEO_MAP_PATH`: path where youw want to save the detector geometry (x,y,z) $\rightarrow$ cellID function (this will be made automatically in `numpy_to_lcio.py`)
-- `COMPARE_OUTPUT_DIR`: path to store any plots make in `compare_tracks.py`
+- `GEO_MAP_PATH`: path where you want to save the detector geometry (x,y,z) $\rightarrow$ cellID function (this will be made automatically in `numpy_to_lcio.py`)
+- `COMPARE_OUTPUT_DIR`: path to store any plots made in `compare_tracks.py`
 
 
 #### Scripts
