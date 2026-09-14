@@ -1,6 +1,6 @@
-# GenBIB
+# Fast BIB simulation at a future Muon Collider with generative machine learning
 
-This repository contains code for training generative models to simulate beam-induced background (BIB) at a muon collider detector, generating GenBIB samples, and evaluating their quality.
+This is the official codebase associated with the paper "Fast BIB simulation at a future Muon Collider with generative machine learning" (authors Radha Mastandrea, Shiyu Peng, Benjamin Rosser, Matt LeBlanc; available at https://arxiv.org/abs/2609.12054). This repository contains code for training generative models to simulate beam-induced background (BIB) at a muon collider detector, generating GenBIB samples, and evaluating their quality. 
 
 ## Running scripts
 
